@@ -1,6 +1,6 @@
 {
   "name": "triforce",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Runs a change through an orchestrated multi-agent workflow — zelda plans and merges on Opus, link executes in isolation on Sonnet, and ganondorf renders a verdict on the merged diff against a frozen, user-sourced criteria list. The audit is required but never blocking, bounded by a monotone per-branch invocation ledger rather than by the reviewer's own judgement, so it terminates instead of finding something every round.",
   "author": {
     "name": "cookiesncache"
