@@ -76,7 +76,7 @@ if grep -hE "^model:" agents/*.md | grep -qE "[0-9]{8}|-[0-9]{4}-"; then
 else
   sok "model pins are aliases, not dated ids"
 fi
-for pin in "zelda:opus" "link:sonnet" "ganondorf-t1:sonnet" "ganondorf-t2:opus" "ganondorf-t3:fable"; do
+for pin in "zelda:opus" "link:sonnet" "verifier:sonnet"            "ganondorf-t1:sonnet" "ganondorf-t2:opus" "ganondorf-t3:fable"; do
   a="${pin%%:*}"; m="${pin##*:}"
   if grep -qE "^model: $m\$" "agents/$a.md" 2>/dev/null; then
     sok "$a pinned to $m"
@@ -113,6 +113,49 @@ if grep -rniE "at least [0-9]+ (finding|issue)|minimum of [0-9]+ finding|target 
   sbad "no finding floor in any agent or reference"
 else
   sok "no finding floor in any agent or reference"
+fi
+
+# verify() must be structurally incapable of generating. Its schema has no
+# findings array, and the closed status enum is the whole contract.
+if grep -qE '"(findings|violations)"' agents/verifier.md 2>/dev/null; then
+  sbad "verifier has no findings/violations array in its schema"
+else
+  sok "verifier has no findings/violations array in its schema"
+fi
+missing=""
+for st in RESOLVED UNRESOLVED RELOCATION_FAILED; do
+  grep -q "$st" agents/verifier.md 2>/dev/null || missing="$missing $st"
+done
+[ -z "$missing" ] && sok "verifier carries all three statuses"                   || sbad "verifier is missing:$missing"
+if grep -q "explicitly not \`RESOLVED\`" agents/verifier.md 2>/dev/null; then
+  sok "RELOCATION_FAILED is explicitly not RESOLVED"
+else
+  sbad "RELOCATION_FAILED is explicitly not RESOLVED"
+fi
+# the verifier must not be handed the diff
+if grep -q "You do not receive the diff" agents/verifier.md 2>/dev/null; then
+  sok "the diff is withheld from the verifier"
+else
+  sbad "the diff is withheld from the verifier"
+fi
+# tools: [] on both non-writing agents makes the firewall a type, not a request
+for a in verifier ganondorf-t1 ganondorf-t2 ganondorf-t3; do
+  if grep -qE '^tools: \[\]$' "agents/$a.md" 2>/dev/null; then
+    sok "$a has no file tools"
+  else
+    sbad "$a has no file tools"
+  fi
+done
+# the /triforce:verify entry point forks and defaults to the cheap mode
+if grep -q "^context: fork" commands/verify.md 2>/dev/null; then
+  sok "verify command uses context: fork (self-contained, no user input)"
+else
+  sbad "verify command uses context: fork"
+fi
+if grep -q -- "--re-audit" commands/verify.md 2>/dev/null; then
+  sok "the generative mode requires an explicit --re-audit"
+else
+  sbad "the generative mode requires an explicit --re-audit"
 fi
 
 # the disclosure sentence must survive verbatim

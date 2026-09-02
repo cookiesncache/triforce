@@ -140,6 +140,43 @@ cnt=$(bash "$L" get "$KS" invocations_used)
 check "seen-add does not touch counters" "$cnt" "0"
 if bash "$L" seen-has "$KS" "$V3" 2>/dev/null; then ok "second id also retained"; else bad "second id also retained"; fi
 
+# --- UNRESOLVED at most twice; the third escalates --------------------------
+# Mechanical, because a rule the orchestrator has to remember is one it can talk
+# itself out of.
+KU=$(bash "$L" key u tree crit)
+bash "$L" init "$KU" 2 sha crit >/dev/null
+VA=$(bash "$L" vid C1 "span a")
+VB=$(bash "$L" vid C2 "span b")
+
+r1=$(bash "$L" unresolved-bump "$KU" "$VA" 2>/dev/null); rc1=$?
+r2=$(bash "$L" unresolved-bump "$KU" "$VA" 2>/dev/null); rc2=$?
+r3=$(bash "$L" unresolved-bump "$KU" "$VA" 2>/dev/null); rc3=$?
+check "first UNRESOLVED counts 1"  "$r1" "1"
+check "second UNRESOLVED counts 2" "$r2" "2"
+check "third UNRESOLVED counts 3"  "$r3" "3"
+if [ "$rc1" -eq 0 ] && [ "$rc2" -eq 0 ] && [ "$rc3" -ne 0 ]; then
+  ok "the third UNRESOLVED escalates (exit non-zero), the first two do not"
+else
+  bad "third UNRESOLVED escalates — got rc $rc1/$rc2/$rc3"
+fi
+
+# per-violation, not global
+bash "$L" unresolved-bump "$KU" "$VB" >/dev/null 2>&1
+check "a second violation counts separately" "$(bash "$L" unresolved-count "$KU" "$VB")" "1"
+check "the first is unaffected"              "$(bash "$L" unresolved-count "$KU" "$VA")" "3"
+
+# and the counts survive an unrelated counter write
+bash "$L" bump "$KU" verify_used >/dev/null 2>&1
+check "UNRESOLVED counts survive a verify_used write" "$(bash "$L" unresolved-count "$KU" "$VA")" "3"
+if command -v python >/dev/null 2>&1; then
+  if python -c "import json,sys; json.load(open(sys.argv[1]))" "$TRIFORCE_LEDGER_DIR/$KU.json" 2>/dev/null; then
+    ok "ledger stays valid JSON after unresolved bookkeeping"
+  else
+    bad "ledger stays valid JSON after unresolved bookkeeping"
+    cat "$TRIFORCE_LEDGER_DIR/$KU.json"
+  fi
+fi
+
 # --- persisting the audited bytes -------------------------------------------
 printf 'the exact bytes that were audited\n' > "$WORK/diff.txt"
 SHA=$(bash "$L" persist "$KS" "$WORK/diff.txt")

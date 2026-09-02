@@ -35,6 +35,7 @@ finding that cannot name a criterion has no field in the output schema to occupy
 | **zelda** | Wisdom | `opus` | Orchestrates. Plans, dispatches, merges, renders the verdict. Sole merge point. |
 | **ganondorf** | Power | `sonnet` / `opus` / `fable` | Audits the merged diff against frozen criteria. Three tier variants, selected by the preflight risk score. |
 | **link** | Courage | `sonnet` | Executes one task in its own worktree. Never merges. |
+| **verifier** | — | `sonnet` | Answers one question — did the fix land. Its schema has no findings array, so it cannot generate. |
 | ~~navi~~ | — | — | **Cut.** Did not earn its seat; see [Seats](#seats-that-are-empty-on-purpose). |
 
 Pins are **aliases**, never dated model ids, so they survive a model release.
@@ -74,6 +75,16 @@ checkout, so `.env` and friends are absent from it.
 ```bash
 /triforce add rate limiting to the upload endpoint
 ```
+
+Then, after you make fixes:
+
+```bash
+/triforce:verify
+```
+
+That is the cheap, non-generative mode — it answers *did my fixes land* and cannot produce a new
+finding. `--re-audit` buys a fresh roll-call over the **same** frozen criteria and costs one capped
+invocation; it is deliberately not the default, because only a human should buy another round.
 
 | Flag | Effect |
 |---|---|
@@ -154,14 +165,14 @@ Everything below is either a number or an honest blank. Nothing deferred is repo
 
 ### Verified
 
-`bash acceptance/run.sh` — **68 checks green**:
+`bash acceptance/run.sh` — **87 checks green**:
 
 | Suite | Checks | Covers |
 |---|---|---|
-| static | 18 | manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no `xhigh` effort, tier variants in sync, no while-loop over the generator, no finding floor anywhere |
+| static | 29 | manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no `xhigh` effort, tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array |
 | risk score | 7 | additive scoring, categorical floors, T0 content class. Includes a 4-line auth-guard removal reaching **T3** — the case a multiplicative score zeroes out |
 | preflight | 10 | case 1: `baseRef` unset/`fresh` **blocks**, `CLAUDE_CODE_SUBAGENT_MODEL` blocks, version read from the binary |
-| ledger | 23 | cases 8 + 9: caps hold at 4/6/9, counters monotone under every command sequence, dedup on `seen` |
+| ledger | 31 | cases 8 + 9: caps hold at 4/6/9, counters monotone under every command sequence, dedup on `seen`, and `UNRESOLVED` escalating to a human on the third |
 | gate | 10 | cases 10 + 14: each check kills its own candidate, severity-first ordering, ablation 0 vs 4 |
 
 ### Not measured
@@ -205,7 +216,8 @@ demonstrably newer. Preflight reads `claude --version` from the binary instead, 
 ## Layout
 
 ```
-agents/          zelda, link, ganondorf-t1/t2/t3
+agents/          zelda, link, verifier, ganondorf-t1/t2/t3
+commands/        verify.md  (context: fork — the E3 "user explicitly asked" path)
 skills/triforce/ SKILL.md, references/, scripts/
   scripts/       preflight, risk-score, ledger, gate   (pure bash + git)
 hooks/           Stop hook: the audit ran, or a waiver is recorded

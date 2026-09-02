@@ -116,7 +116,11 @@ Then run the **final-state audit**. It is required, and it is not blocking.
 
 Compute no statistic. Display none. Let none route control flow. Do not tell the user how many defects might remain — no such number is well-posed here, and printing one to someone who just got a clean result is the worst thing this tool can do.
 
-Seeing your own fixes is `verify()` (cheap, has no findings array, structurally cannot generate) or `RE-AUDIT DELTA` (human-pulled, costs one capped invocation). Only a human pulls the second. See `references/terminals.md`.
+Seeing your own fixes is `verify()` (cheap, has no findings array, structurally cannot generate) or `RE-AUDIT DELTA` (human-pulled, costs one capped invocation). Only a human pulls the second.
+
+Both live behind `/triforce:verify`, which forks so a long verification never lands in the user's conversation. `verify()` is the default; `--re-audit` is required for the generative mode. Dispatch the `verifier` agent per open violation with the persisted audited bytes and the current span — **and withhold the diff**, so it answers "does this text still exhibit V?" rather than "is the author's clarification adequate."
+
+`UNRESOLVED` is capped mechanically, not by memory: `ledger.sh unresolved-bump` exits non-zero on the third for a given violation, and a human decides from there. `RELOCATION_FAILED` is never `RESOLVED`. See `references/terminals.md`.
 
 ## 6. Terminal state — tear down what you created
 

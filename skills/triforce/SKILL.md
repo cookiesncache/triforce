@@ -55,6 +55,7 @@ Read the one you need, when you need it.
 | `references/ledger.md` | Budget constants, monotone counters, content-addressed violation ids, dedup |
 | `references/audit-contract.md` | The auditor's contract, verbatim — the same body the three ganondorf variants carry |
 | `references/terminals.md` | Every terminal, `verify()` vs `RE-AUDIT DELTA`, the legal and illegal re-entry triggers |
+| `commands/verify.md` | The `/triforce:verify` entry point — `verify()` by default, `--re-audit` for the generative mode |
 | `references/preflight.md` | The nine risk signals, their weights, and the tier thresholds |
 
 ## The one thing to hold onto

@@ -66,11 +66,14 @@ get_field() {
 write_ledger() {
   # write_ledger <path> <key> <tier> <audited_sha> <criteria_hash> <inv> <re> <ver> <grant>
   local p="$1" key="$2" tier="$3" sha="$4" ch="$5" inv="$6" re="$7" ver="$8" grant="$9"
-  local seen waived
+  local seen waived unres
   seen=$(sed -n 's/^  "seen_keys": \(.*\)$/\1/p' "$p" 2>/dev/null | head -1)
   waived=$(sed -n 's/^  "waived": \(.*\)$/\1/p' "$p" 2>/dev/null | head -1)
+  unres=$(sed -n 's/^  "unresolved": \(.*\)$/\1/p' "$p" 2>/dev/null | head -1)
   [ -n "$seen" ]   || seen='[],'
   [ -n "$waived" ] || waived='[]'
+  [ -n "$unres" ]  || unres='[]'
+  unres="${unres%,},"          # normalise to exactly one trailing comma
   {
     echo '{'
     echo "  \"key\": \"$key\","
@@ -81,6 +84,7 @@ write_ledger() {
     echo "  \"reaudits_used\": $re,"
     echo "  \"verify_used\": $ver,"
     echo "  \"grant_used\": $grant,"
+    echo "  \"unresolved\": $unres"
     echo "  \"seen_keys\": $seen"
     echo "  \"waived\": $waived"
     echo '}'
@@ -117,7 +121,7 @@ case "$CMD" in
       echo "ledger: key $key already exists; counters preserved" >&2
       exit 0
     fi
-    printf '{\n  "seen_keys": [],\n  "waived": []\n}\n' > "$p"
+    printf '{\n  "unresolved": [],\n  "seen_keys": [],\n  "waived": []\n}\n' > "$p"
     write_ledger "$p" "$key" "$tier" "$sha" "$ch" 0 0 0 0
     echo "$p"
     ;;
@@ -209,6 +213,45 @@ case "$CMD" in
     [ -n "$cur" ] || cur="[]"
     if [ "$cur" = "[]" ]; then new="[\"$2\"]"; else new="${cur%]}, \"$2\"]"; fi
     sed -i "s|^  \"seen_keys\": .*$|  \"seen_keys\": $new,|" "$p"
+    ;;
+
+  unresolved-bump)
+    # "A violation may return UNRESOLVED at most twice; the third escalates to
+    # a human." Mechanical, because a rule the orchestrator has to remember is a
+    # rule it can talk itself out of. Prints the new count and exits 1 once the
+    # violation has crossed into escalation territory.
+    [ $# -eq 2 ] || die "usage: unresolved-bump <key> <violation_id>"
+    p="$(require_ledger "$1")" || exit 2
+    # Normalise FIRST: the stored line carries a trailing comma, and stripping
+    # "]" from "[...]," removes nothing, which silently corrupts the array.
+    line=$(sed -n 's/^  "unresolved": \(.*\)$/\1/p' "$p" | head -1)
+    line="${line%,}"
+    [ -n "$line" ] || line="[]"
+    n=$(printf '%s' "$line" | grep -o "\"$2:[0-9]*\"" | sed "s/\"$2://; s/\"//" | head -1)
+    [ -n "$n" ] || n=0
+    new=$((n + 1))
+    # Drop this violation's existing entry, then re-add it with the new count.
+    rest=$(printf '%s' "$line" \
+           | sed "s/\"$2:[0-9]*\", \{0,1\}//; s/, \{0,1\}\"$2:[0-9]*\"//; s/\"$2:[0-9]*\"//")
+    rest=$(printf '%s' "$rest" | sed 's/\[ *, */[/; s/, *\]/]/; s/, *, */, /')
+    [ -n "$rest" ] || rest="[]"
+    if [ "$rest" = "[]" ]; then merged="[\"$2:$new\"]"; else merged="${rest%]}, \"$2:$new\"]"; fi
+    if grep -q '^  "unresolved":' "$p"; then
+      sed -i "s|^  \"unresolved\": .*$|  \"unresolved\": $merged,|" "$p"
+    else
+      sed -i "s|^  \"seen_keys\":|  \"unresolved\": $merged,\n  \"seen_keys\":|" "$p"
+    fi
+    echo "$new"
+    [ "$new" -ge 3 ] && { echo "ESCALATE: $2 returned UNRESOLVED $new times; a human decides" >&2; exit 1; }
+    exit 0
+    ;;
+
+  unresolved-count)
+    [ $# -eq 2 ] || die "usage: unresolved-count <key> <violation_id>"
+    p="$(require_ledger "$1")" || exit 2
+    n=$(sed -n 's/^  "unresolved": \(.*\)$/\1/p' "$p" | head -1 \
+        | grep -o "\"$2:[0-9]*\"" | sed "s/\"$2://; s/\"//" | head -1)
+    printf '%s' "${n:-0}"
     ;;
 
   waive)
