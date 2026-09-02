@@ -32,17 +32,67 @@ This measures the **clean-return rate on known-clean diffs** — the headline me
 
 Everything below assumes step 1 cleared.
 
+### Measured — 2026-09-02: 91% (11/12), the bar is cleared
+
+```bash
+bash acceptance/clean-corpus.sh --repo <django> --n 40
+#   under-50-LOC band : 11/12  (91%)   <- the headline
+#   all audited bands : 30/32  (93%)
+```
+
+**Read the denominator, not just the percentage.** 20 small commits were drawn; 8
+scored T0 and were SKIPPED (correctly counted in neither direction), leaving 12. One
+audit is worth 8 points, so this is "clears the bar with one unexplained row", not a
+precise rate. Pass `--n 40`, not the default 20 — at `--n 20` the band yields
+`SMALL_TOTAL=7`.
+
+**An earlier run of this same harness reported 100% (32/32). That number was an
+artifact and is retracted** — see the extraction defect under "Things that will bite".
+It is recorded here because a cold session that finds "100%" in old notes and "91%"
+here must know which one is real.
+
+The two `UNREVIEWABLE` rows (`1d50f129`, `febefb17`) each reproduce **clean** in
+isolation — 50s and 87s, both markers present, empty array. They were transient
+infrastructure failures during a 32-call batch, not reviewer failures. The measured
+91% deliberately still counts them against the rate; the harness has no retry, and
+adding one is a judgement call, since retries also mask systematic failure.
+
+**Corpus.** The default `--repo` is this repo, which cannot support the metric: it has
+2 commits under 50 LOC and only 1 is auditable. Local repos were all unfit — the
+binding constraint is not size but commit-subject quality, because `clean-corpus.sh`
+lifts criterion C1 *verbatim from the commit subject*, and "Update content.js" is not a
+criterion. django/django was chosen for descriptive subjects, a real review gate, and
+264 of 400 commits under 50 LOC. It lives in the scratchpad and will not survive;
+recreate with:
+
+```bash
+git clone --depth 400 --single-branch https://github.com/django/django.git django
+```
+
 ---
 
 ## Blockers, and what each one gates
 
-Nothing outstanding is blocked on missing code. All three blockers are environmental.
+Nothing outstanding is blocked on missing code. All three blockers were environmental,
+and **as of 2026-09-02 all three are CLEARED** on CLI **2.1.258**. The table is kept
+because the symptoms recur and are each mistakable for something else.
 
-| Blocker | Gates |
-|---|---|
-| **No authenticated `claude -p`** — reports "Not logged in" even with valid credentials on disk; run `/login` in an interactive terminal first | cases 2–6, 11, 12, 13, 15, 17, the plan-gate A/B, the end-to-end run |
-| **`claude plugin eval` not exposed** at CLI 2.1.195 — it is *in* the binary but early-access gated | the eval suite and the with/without ablation delta |
-| **`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` absent** before CLI **2.1.219**; this box was 2.1.195 | navi's A/B and the depth-1 / depth-3 arms |
+| Blocker | Gates | Status |
+|---|---|---|
+| **No authenticated `claude -p`** — reports "Not logged in" even with valid credentials on disk | cases 2–6, 11, 12, 13, 15, 17, the plan-gate A/B, the end-to-end run | **CLEARED.** Probe returns `READY` |
+| **`claude plugin eval` not exposed** at CLI 2.1.195 — *in* the binary but early-access gated | the eval suite and the with/without ablation delta | **CLEARED** at 2.1.258. Its help advertises a **no-plugin baseline arm**, which is the ablation delta |
+| **`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` absent** before CLI **2.1.219** | navi's A/B and the depth-1 / depth-3 arms | **CLEARED** — present in the 2.1.258 binary |
+
+Two traps this cost time on, both worth knowing:
+
+- **The two shells report auth differently.** Git Bash says `Not logged in · Please run
+  /login`; PowerShell says `Failed to authenticate: OAuth session expired and could not
+  be refreshed`. The second is the true diagnosis. `~/.claude/.credentials.json` can
+  exist, carry `"subscriptionType":"pro"`, and still have `"expiresAt":0`.
+- **`claude.exe` self-updates mid-session.** A version read at the start of a session can
+  be stale by the middle of it — this box went 2.1.195 → 2.1.258 in place, at the same
+  path, without a reinstall. **Re-probe the CLI version before trusting a blocker
+  claim**, including the ones in this table.
 
 Every harness is already written and gates on an auth probe, reporting **UNMEASURED** rather than
 skipping quietly. A case that did not run must never be counted as one that passed.
@@ -52,13 +102,13 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # 89 checks, offline, must stay green
-bash acceptance/clean-corpus.sh           # case 11 — THE GATE (step 1 above)
-bash acceptance/probe-harness.sh          # cases 2-6: isolation invariants
-bash acceptance/live-cases.sh --case 12   # idempotence
-bash acceptance/live-cases.sh --case 13   # fix-and-re-audit — the literal complaint
-bash acceptance/live-cases.sh --case 15   # floor ablation
-bash acceptance/live-cases.sh --case 17   # THE FALSIFIER
+bash acceptance/run.sh                    # DONE — 93 checks green, offline, must stay green
+bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
+bash acceptance/probe-harness.sh          # PARTIAL — case 2 green, then hits the line-55 bug
+bash acceptance/live-cases.sh --case 12   # NOT RUN — idempotence
+bash acceptance/live-cases.sh --case 13   # NOT RUN — fix-and-re-audit, the literal complaint
+bash acceptance/live-cases.sh --case 15   # NOT RUN — floor ablation
+bash acceptance/live-cases.sh --case 17   # NOT RUN — THE FALSIFIER
 ```
 
 Then, still to be **built**, not just run:
@@ -75,6 +125,11 @@ Then, still to be **built**, not just run:
 It can falsify the design. If arm (b) — one forced second hunting round — beats arm (a) on F1, then
 per the issue the one-round premise **"is wrong for this workload and the design must be revised,
 not defended."** Do not rationalise a falsifying result. Report it.
+
+**Case 17 could not falsify anything before 2026-09-02.** The extraction defect above
+made every arm score zero findings, so its F1 comparison was degenerate — it would have
+returned a tie and looked like a corroboration. It is only now a real experiment. Any
+case 17 result recorded before that date is void.
 
 ---
 
@@ -131,6 +186,25 @@ the one multi-model arrangement the research supports.
 
 ## Things that will bite
 
+- **A line-oriented violations extraction silently turns every audit into a PASS.**
+  Both live harnesses used `sed -n 's/.*<<<VIOLATIONS//p'`, which prints only the
+  *remainder of the marker's own line* — never the following lines, which is where the
+  JSON array lives. The whitespace fallback then wrote `[]`, `nblock` came out 0, and
+  the verdict was `PASS`. This made `clean-corpus.sh` report **100% unconditionally**,
+  for every commit, regardless of what any auditor found. Fixed 2026-09-02 with a range
+  extraction, `sed -n '/<<<VIOLATIONS/,/VIOLATIONS>>>/p' | sed '1d;$d'`, guarded by four
+  offline checks in `run.sh` so it cannot regress without a live model to notice.
+  **The gate was innocent throughout** — `gate.sh` discarded nothing, because it was
+  never handed a candidate. Verifying that the *model* emits findings does not verify
+  that the *harness* can read them; check the whole path.
+
+- **`probe-harness.sh:55` writes to `src/app.js` in a sandbox that has no `src/`.**
+  The redirect fails, `git commit -qam` then has nothing to commit, its failure is
+  swallowed by `>/dev/null 2>&1`, and `ORCH_COMMIT` silently becomes the *previous*
+  HEAD. Case 3 would then assert that an executor can see a commit that was never
+  created. **Not yet fixed.** Case 2's checks pass before this point; 3–6 are
+  unverified rather than failing.
+
 - **`python3` on Windows is a Store alias stub** that exists on PATH and fails on exec. `gate.sh`
   probes interpreters by running them. This once made five negative assertions go green against a
   crashed gate — which is why **every negative assertion now requires the gate to exit 0 and name
@@ -177,12 +251,21 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — 89 checks, offline, currently green. Keep it green.
+- **`acceptance/run.sh`** — **93** checks (89 + 4 guarding the extraction defect),
+  offline, currently green. Keep it green.
 - Installed as `triforce@cookiesncache-marketplace`, **~694 tokens always-on** (the recorded baseline).
 
 ## Definition of done — current state
 
-1 of 10 met. `Tier 1 checks pass` ✅. Every other item is blocked on one of the three blockers above,
-except case 16, which needs time rather than access.
+**2 of 10 met.** `Tier 1 checks pass` ✅ and `clean-return rate ≥ 70%` ✅ (91%, 11/12).
+
+Nothing is blocked on access any more — all three environmental blockers are cleared.
+The remaining eight are blocked on **work**, not permission, except case 16, which
+needs production audits to accumulate. The next session can run cases 12, 13, 15 and 17
+immediately; fix `probe-harness.sh:55` first if cases 3–6 are wanted.
+
+**navi and the plan gate remain CUT and DEFERRED.** The CLI now permits their A/Bs, but
+permitting is not measuring, and the issue's decision rule turns on the measurement.
+Do not build either until its A/B has run.
 
 Do not close the issue until the remaining nine are either met or explicitly waived by the author.

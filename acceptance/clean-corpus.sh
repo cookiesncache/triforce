@@ -130,20 +130,34 @@ $(cat "$WORK/diff.txt")"
   raw=$(printf '%s' "$prompt" | timeout 600 claude -p --plugin-dir "$ROOT" \
           --agent "$agent" --allowedTools "" 2>/dev/null)
 
-  printf '%s' "$raw" | sed -n 's/.*<<<VIOLATIONS//p' | sed 's/VIOLATIONS>>>.*//' \
-    > "$WORK/viol.json" 2>/dev/null
-  grep -q '[^[:space:]]' "$WORK/viol.json" 2>/dev/null || echo '[]' > "$WORK/viol.json"
+  # Extraction MUST be range-oriented. The violations array spans many lines;
+  # a line-oriented `sed -n 's/.*<<<VIOLATIONS//p'` captures only the remainder
+  # of the marker's own line — i.e. nothing — which the whitespace fallback
+  # below then silently turns into '[]', and therefore into a PASS. That defect
+  # made this harness report 100% unconditionally.
+  if printf '%s' "$raw" | grep -q '<<<VIOLATIONS' \
+     && printf '%s' "$raw" | grep -q 'VIOLATIONS>>>'; then
+    printf '%s' "$raw" | sed -n '/<<<VIOLATIONS/,/VIOLATIONS>>>/p' | sed '1d;$d' \
+      > "$WORK/viol.json" 2>/dev/null
+    grep -q '[^[:space:]]' "$WORK/viol.json" 2>/dev/null || echo '[]' > "$WORK/viol.json"
 
-  gated=$(bash "$ROOT/skills/triforce/scripts/gate.sh" \
-            --criteria "$WORK/criteria.tsv" --diff "$WORK/diff.txt" \
-            --violations "$WORK/viol.json" --tier "$tier" 2>/dev/null)
-  rc=$?
+    gated=$(bash "$ROOT/skills/triforce/scripts/gate.sh" \
+              --criteria "$WORK/criteria.tsv" --diff "$WORK/diff.txt" \
+              --violations "$WORK/viol.json" --tier "$tier" 2>/dev/null)
+    rc=$?
 
-  if [ $rc -ne 0 ]; then
-    verdict="UNREVIEWABLE"; nblock="-"
+    if [ $rc -ne 0 ]; then
+      verdict="UNREVIEWABLE"; nblock="-"
+    else
+      nblock=$(printf '%s' "$gated" | grep -c '"criterion_id"' || true)
+      if [ "${nblock:-0}" -eq 0 ]; then verdict="PASS"; else verdict="FINDINGS"; fi
+    fi
   else
-    nblock=$(printf '%s' "$gated" | grep -c '"criterion_id"' || true)
-    if [ "${nblock:-0}" -eq 0 ]; then verdict="PASS"; else verdict="FINDINGS"; fi
+    # INVARIANT 10: a truncated, crashed or timed-out reviewer can never PASS.
+    # Absent markers mean no parseable verdict was delivered. That is not the
+    # same claim as "the auditor found nothing", and must never be counted as
+    # one — it is UNREVIEWABLE, and it counts against the rate, not for it.
+    verdict="UNREVIEWABLE"; nblock="-"
   fi
 
   printf '  %-10s %-6s %-6s %-8s %s\n' "${sha:0:8}" "$loc" "T$tier" "$verdict" "$nblock"

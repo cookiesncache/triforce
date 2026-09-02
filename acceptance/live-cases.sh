@@ -126,7 +126,24 @@ MERGED DIFF (git diff -W):
 $(cat "$WORK/diff.txt")"
   raw=$(printf '%s' "$prompt" | timeout 600 claude -p --plugin-dir "$ROOT" \
           --agent "ganondorf-t$tier" --allowedTools "" 2>/dev/null)
-  printf '%s' "$raw" | sed -n 's/.*<<<VIOLATIONS//p' | sed 's/VIOLATIONS>>>.*//' > "$WORK/raw.json"
+  # Extraction MUST be range-oriented — see the note in clean-corpus.sh. A
+  # line-oriented `sed -n 's/.*<<<VIOLATIONS//p'` captures only the remainder of
+  # the marker's own line, so every multi-line violations array was discarded
+  # and every arm scored zero findings.
+  #
+  # INVARIANT 10: a truncated, crashed or timed-out reviewer can never PASS.
+  # Here that matters twice over: a degenerate zero-finding arm would silently
+  # corrupt the very comparisons these cases exist to make — case 17's F1 in
+  # particular cannot falsify anything if every arm finds nothing.
+  if ! printf '%s' "$raw" | grep -q '<<<VIOLATIONS' \
+     || ! printf '%s' "$raw" | grep -q 'VIOLATIONS>>>'; then
+    echo
+    echo "  UNREVIEWABLE — the reviewer returned no parseable verdict for $out."
+    echo "  A case that could not be read must never be counted as one that passed."
+    echo "  Reporting UNMEASURED, not passing."
+    exit 2
+  fi
+  printf '%s' "$raw" | sed -n '/<<<VIOLATIONS/,/VIOLATIONS>>>/p' | sed '1d;$d' > "$WORK/raw.json"
   grep -q '[^[:space:]]' "$WORK/raw.json" 2>/dev/null || echo '[]' > "$WORK/raw.json"
   bash "$GATE" --criteria "$WORK/criteria.tsv" --diff "$WORK/diff.txt" \
        --violations "$WORK/raw.json" --tier "$tier" > "$out" 2>/dev/null

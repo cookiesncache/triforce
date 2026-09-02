@@ -190,6 +190,45 @@ else
   sbad "PASS_FIX_DELTA_UNAUDITED carries its disclosure sentence verbatim"
 fi
 
+# --- the live harnesses' violation extraction -------------------------------
+# A line-oriented extraction captures only the remainder of the marker's own
+# line, silently discards every multi-line violations array, and turns each
+# audit into a PASS. That defect made clean-corpus.sh report 100% regardless of
+# what any auditor found. These checks are offline on purpose: they exercise the
+# idiom itself, so the class cannot regress without a live model to notice it.
+_xtr="$(mktemp)"
+printf 'roll-call\n<<<VIOLATIONS\n[\n  {"criterion_id": "S3", "severity": "blocking"}\n]\nVIOLATIONS>>>\nCOMPLETE\n' > "$_xtr"
+_got=$(sed -n '/<<<VIOLATIONS/,/VIOLATIONS>>>/p' "$_xtr" | sed '1d;$d' | grep -c '"criterion_id"')
+if [ "${_got:-0}" -eq 1 ]; then
+  sok "extraction recovers a MULTI-LINE violations array (the 100% bug)"
+else
+  sbad "extraction lost a multi-line violations array — every audit becomes a false PASS"
+fi
+
+# and neither harness may still carry the line-oriented idiom in LIVE CODE.
+# Comment lines are stripped first: both harnesses quote the old idiom verbatim
+# to document why it was wrong, and that documentation must not trip the check.
+_live=0
+for _h in acceptance/clean-corpus.sh acceptance/live-cases.sh; do
+  grep -vE '^[[:space:]]*#' "$_h" 2>/dev/null \
+    | grep -qF "s/.*<<<VIOLATIONS//p" && _live=1
+done
+if [ "$_live" -eq 0 ]; then
+  sok "no live harness executes the line-oriented extraction"
+else
+  sbad "a live harness still executes the line-oriented extraction"
+fi
+
+# INVARIANT 10: markerless output must not be readable as an empty array
+for _h in acceptance/clean-corpus.sh acceptance/live-cases.sh; do
+  if grep -q "grep -q '<<<VIOLATIONS'" "$_h" 2>/dev/null; then
+    sok "$(basename "$_h") treats a markerless reviewer reply as UNREVIEWABLE, not PASS"
+  else
+    sbad "$(basename "$_h") can still read a crashed/truncated reply as zero findings"
+  fi
+done
+rm -f "$_xtr"
+
 echo
 echo "  $SPASS passed, $SFAIL failed"
 SUITES=$((SUITES + 1)); [ "$SFAIL" -eq 0 ] && SUITES_OK=$((SUITES_OK + 1))
