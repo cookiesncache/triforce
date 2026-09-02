@@ -1,0 +1,15 @@
+# Files a subagent worktree needs that git would otherwise omit.
+#
+# A worktree is a fresh checkout, so gitignored files are ABSENT from it.
+# Executors that run tests fail without their environment. List those paths
+# here — one glob per line — and the harness copies them into each agent
+# worktree.
+#
+# This file ships with the patterns most projects need. Uncomment or add
+# yours; nothing here is copied unless it actually exists in your checkout.
+
+# .env
+# .env.local
+# .env.test
+# .npmrc
+# config/local.yml

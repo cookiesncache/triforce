@@ -1,0 +1,17 @@
+# Invocation ledger — per-branch audit state, never committed
+.triforce/ledger/
+.triforce/audited/
+
+# Plugin local state files
+*.local.md
+
+# Acceptance/eval scratch output
+acceptance/.out/
+evals/.out/
+
+# Syncthing conflict artifacts
+*.sync-conflict-*
+
+# OS noise
+.DS_Store
+Thumbs.db
