@@ -1,0 +1,6 @@
+# Shell scripts must stay LF or they break under bash on Windows checkouts.
+*.sh text eol=lf
+# Markdown carrying verbatim prompt contracts — keep byte-stable across platforms
+# so the contract-sync check compares content, not line endings.
+*.md text eol=lf
+*.json text eol=lf
