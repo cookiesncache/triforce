@@ -16,10 +16,10 @@ That failure has two unrelated causes, and they need opposite fixes:
   those five permissions compete in-prompt against one finding floor — and the floor wins.
   → **No floors here. Anywhere. In any tier.**
 - **Unbounded scope.** Even a perfectly honest reviewer has an infinite admissible population,
-  because *"is there anything else worth saying about this?"* has no zero. Four production reviewers
-  on the same 146 PRs flagged 617 locations: **93.4% found by exactly one tool, zero by all four.**
-  Greptile's own breakdown is **79% nits vs 2% factually incorrect** — the findings are mostly
-  *true* and *unwanted*.
+  because *"is there anything else worth saying about this?"* has no zero. Run several production
+  reviewers over the same pull requests and the great majority of what they flag is found by
+  exactly one of them, with almost nothing found by all — and the bulk of it is nits rather than
+  errors. The findings are mostly *true* and *unwanted*.
   → **No instruction bounds an unbounded set. Only a schema does.**
 
 So ganondorf does not hunt. It **renders a verdict on a frozen, enumerated criteria list**, and a
@@ -148,14 +148,18 @@ anything up.
 It does not tell you when your code is clean. It tells you **another round is no longer worth its
 cost.**
 
-At a per-round detection probability of 0.35, reaching under 10% residual risk takes seven
-consecutive clean rounds — and detection *declines* each round, because surviving defects are
-selected for difficulty. **Roughly 29% residual risk after three clean rounds is the floor of the
-method, not a bug in it.**
+Driving residual risk near zero would take many consecutive clean rounds — and effective detection
+*declines* with each one, because the defects that survive are selected for being hard to find.
+**A substantial residual risk after a few clean rounds is the floor of the method, not a bug in
+it.**
 
-Accepted recall costs, named rather than assumed away: T0 forfeits real defects (~31% of sub-50-line
-PRs contain findings); the ring discards real bugs outside it; dropping ambiguity as a blocking
-class loses a real class.
+Accepted recall costs, named rather than assumed away: T0 forfeits real defects, and a meaningful
+share of even small diffs contain them; the ring discards real bugs outside it; dropping ambiguity
+as a blocking class loses a real class.
+
+*The measurements behind these claims live in [issue #1](https://github.com/cookiesncache/claude-plugins/issues/1)
+and its research comment, deliberately not here — figures go stale, and a README that carries them
+starts lying quietly.*
 
 ---
 
@@ -165,11 +169,14 @@ Everything below is either a number or an honest blank. Nothing deferred is repo
 
 ### Verified
 
-`bash acceptance/run.sh` — **87 checks green**:
+Installs from the pinned SHA and loads with its full inventory — 6 agents, 2 skills, 1 hook —
+at a projected **~694 tokens always-on**, recorded here as the baseline for future comparison.
+
+`bash acceptance/run.sh` — **89 checks green**:
 
 | Suite | Checks | Covers |
 |---|---|---|
-| static | 29 | manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no `xhigh` effort, tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array |
+| static | 31 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no `xhigh` effort, tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures |
 | risk score | 7 | additive scoring, categorical floors, T0 content class. Includes a 4-line auth-guard removal reaching **T3** — the case a multiplicative score zeroes out |
 | preflight | 10 | case 1: `baseRef` unset/`fresh` **blocks**, `CLAUDE_CODE_SUBAGENT_MODEL` blocks, version read from the binary |
 | ledger | 31 | cases 8 + 9: caps hold at 4/6/9, counters monotone under every command sequence, dedup on `seen`, and `UNRESOLVED` escalating to a human on the third |
@@ -179,7 +186,7 @@ Everything below is either a number or an honest blank. Nothing deferred is repo
 
 | | Status |
 |---|---|
-| **Clean-return rate** (the headline metric, bar ≥70%) | **UNMEASURED.** `acceptance/clean-corpus.sh` is written and gated on auth. |
+| **Clean-return rate** (the headline metric, bar ≥70%) | **UNMEASURED.** `acceptance/clean-corpus.sh` is written and gated on auth. It runs first, because below 50% the criteria contract is decorative and the rest is wasted work. |
 | Tier-2 cases 2–6 (isolation, base-targets-orchestrator, cleanup, retention) | **UNMEASURED.** `acceptance/probe-harness.sh`, gated on auth. |
 | navi A/B, plan-gate four-arm A/B, floor ablation, the one-round falsifier | **NOT RUN.** See [`evals/README.md`](evals/README.md). |
 | with/without ablation delta | **NOT RECORDED.** |
@@ -228,6 +235,14 @@ evals/           trigger cases + the measurement arms, specified
 The three ganondorf variants are **generated** from one shared contract
 (`acceptance/gen-ganondorf.sh`); `--check` re-derives them and fails on any hand edit, so the tiers
 cannot drift.
+
+---
+
+## Continuing this work
+
+[`HANDOFF.md`](HANDOFF.md) carries what a fresh session needs: the ordered next steps, the three
+environmental blockers, the decisions that are settled deliberately (and look like bugs), and the
+invariants that must survive any change.
 
 ---
 

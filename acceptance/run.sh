@@ -158,6 +158,31 @@ else
   sbad "the generative mode requires an explicit --re-audit"
 fi
 
+# TIER-1: the plugin installs from the pinned SHA and reports its full inventory.
+# Only meaningful when it is actually installed; skipped, never faked, otherwise.
+if claude plugin list 2>/dev/null | grep -q "triforce@"; then
+  inv=$(claude plugin details triforce 2>/dev/null)
+  miss=""
+  for c in ganondorf-t1 ganondorf-t2 ganondorf-t3 link verifier zelda triforce verify; do
+    printf '%s' "$inv" | grep -q "$c" || miss="$miss $c"
+  done
+  [ -z "$miss" ] && sok "Tier-1: installed plugin lists every agent and skill"                  || sbad "Tier-1: inventory is missing:$miss"
+else
+  echo "  skip  Tier-1 inventory — triforce is not installed in this environment"
+fi
+
+# The README carries SHAPE, not figures: "No dollar figures, benchmark
+# percentages, or context-window numbers: those go stale and the README is not
+# where they should live." The project's own acceptance bars (70/50) are spec
+# constants, not benchmarks, so they are allowed.
+stale=$(grep -oE "[0-9]+(\.[0-9]+)?%|\$[0-9]" README.md 2>/dev/null         | grep -vE "^(70|50)%$" || true)
+if [ -z "$stale" ]; then
+  sok "README carries no benchmark figures (they go stale; the issue holds them)"
+else
+  sbad "README carries figures that will go stale: $(printf '%s' "$stale" | tr '
+' ' ')"
+fi
+
 # the disclosure sentence must survive verbatim
 if grep -q "They were not audited." skills/triforce/references/terminals.md; then
   sok "PASS_FIX_DELTA_UNAUDITED carries its disclosure sentence verbatim"
@@ -179,11 +204,10 @@ run_suite "the four-check gate (cases 10, 14)" acceptance/test-gate.sh
 defer "case 2,3,4,5,6 (isolation, base-targets-orchestrator, sole merge point, cleanup, retention) — need a live model to dispatch link. Run acceptance/probe-harness.sh when authenticated."
 defer "case 7 (navi degradation, two arms) — navi is CUT pending its A/B; and CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH is not implemented on this CLI (landed in 2.1.219)."
 defer "case 11 (clean-return rate, THE HEADLINE METRIC) — needs a live model. Run acceptance/clean-corpus.sh when authenticated."
-defer "case 12,13 (idempotence; fix-and-re-audit rounds 1-3) — need a live model."
-defer "case 15 (floor ablation) — needs a live model; the floor-free static check above is its cheap proxy, not a substitute."
+defer "case 12,13 (idempotence; fix-and-re-audit rounds 1-3) — need a live model. Run acceptance/live-cases.sh --case 12 / --case 13 when authenticated."
+defer "case 15 (floor ablation) — needs a live model; the floor-free static check above is its cheap proxy, not a substitute. Run acceptance/live-cases.sh --case 15."
 defer "case 16 (effective false positives over rolling windows) — needs production audits to accumulate."
-defer "case 17 (the one-round falsifier: parallel vs forced-second-round vs sequential) — needs a live model."
-defer "Tier-1 'claude plugin details triforce' — needs the plugin installed, not just validated."
+defer "case 17 (the one-round falsifier: parallel vs forced-second-round vs sequential) — needs a live model. Run acceptance/live-cases.sh --case 17. If it falsifies, the design is revised, not defended."
 
 echo
 echo "=============================================================="

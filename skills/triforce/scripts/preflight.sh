@@ -28,6 +28,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+CRITERIA_FILE="${TRIFORCE_CRITERIA_FILE:-.triforce/criteria.tsv}"
+
 BLOCKING=()
 WARNINGS=()
 NOTES=()
@@ -174,6 +176,7 @@ if [ "$AS_JSON" -eq 1 ]; then
   printf '  "tier": "%s",\n' "${TIER:-unknown}"
   printf '  "score": "%s",\n' "${SCORE:-unknown}"
   printf '  "blocking": %s,\n' "${#BLOCKING[@]}"
+  printf '  "criteria_frozen": %s,\n' "$([ -f "$CRITERIA_FILE" ] && echo true || echo false)"
   printf '  "warnings": %s\n' "${#WARNINGS[@]}"
   printf '}\n'
 else
@@ -194,6 +197,24 @@ else
   fi
   for n in "${NOTES[@]:-}";    do [ -n "$n" ] && printf '│ ok        %s\n' "$n"; done
   for w in "${WARNINGS[@]:-}"; do [ -n "$w" ] && printf '│ warn      %s\n' "$w"; done
+
+  # The frozen criteria list belongs ON the card. This is what the audit will
+  # be judged against, and the user should see it before any reviewer runs —
+  # not discover it afterwards in a verdict. It is also the one part of the
+  # card the reviewer may not renegotiate.
+  if [ "${TIER:-0}" != "0" ]; then
+    echo "├─ frozen criteria ────────────────────────────────────────────"
+    if [ -f "$CRITERIA_FILE" ]; then
+      while IFS=$'\t' read -r cid ctext; do
+        [ -n "${cid:-}" ] || continue
+        printf '│ %-4s %s\n' "$cid" "$ctext"
+      done < "$CRITERIA_FILE"
+      printf '│ hash      %s\n' "$(sha1sum < "$CRITERIA_FILE" | cut -d' ' -f1)"
+    else
+      printf '│ none yet — extracted from your request and confirmed before freezing\n'
+      printf '│ (%s)\n' "$CRITERIA_FILE"
+    fi
+  fi
   echo "└──────────────────────────────────────────────────────────────"
   for b in "${BLOCKING[@]:-}"; do
     [ -n "$b" ] || continue
