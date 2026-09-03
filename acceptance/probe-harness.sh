@@ -36,15 +36,23 @@ fi
 ok "headless claude responds"
 
 # --- a scratch repo with the prerequisite set correctly ---------------------
-R="$WORK/repo"; mkdir -p "$R/.claude/src"
+R="$WORK/repo"; mkdir -p "$R/.claude" "$R/src"
 (
+  set -e
   cd "$R" || exit 1
   git init -q -b main
   git config user.email t@example.com; git config user.name t
   printf '{ "worktree": { "baseRef": "head" } }\n' > .claude/settings.json
   echo "function f() { return 1; }" > src/app.js
+  # A test command that fails on its own. Case 6 needs a REAL failure.
+  { echo '#!/usr/bin/env sh'; echo 'echo "1 test, 1 failure"'; echo 'exit 1'; } > run-tests.sh
+  chmod +x run-tests.sh
   git add -A; git commit -qm base
-) >/dev/null 2>&1
+) >/dev/null 2>&1 || {
+  echo "  CANNOT RUN: the scratch fixture did not build."
+  echo "  A harness whose fixture is broken must not report cases as passing."
+  exit 2
+}
 
 cd "$R" || exit 1
 MAIN_TOPLEVEL="$(git rev-parse --show-toplevel)"
@@ -55,6 +63,20 @@ git checkout -q -b triforce/run
 echo "// marker from the orchestrator" >> src/app.js
 git commit -qam "orchestrator commit, absent from main" >/dev/null 2>&1
 ORCH_COMMIT="$(git rev-parse HEAD)"
+
+# FIXTURE GUARD. Case 3 asks whether the orchestrator's commit is an ancestor of
+# the executor's HEAD. If that commit is ALSO on main, the answer is yes no
+# matter what baseRef does, and the highest-value test in this file passes
+# vacuously. This guard is the difference between a green case and a green
+# case that means something. (It caught exactly that: an earlier fixture wrote
+# src/app.js into a directory that did not exist, so this commit never
+# happened and ORCH_COMMIT was main's own tip.)
+if git merge-base --is-ancestor "$ORCH_COMMIT" main 2>/dev/null; then
+  echo "  CANNOT RUN: the fixture's orchestrator commit is reachable from main."
+  echo "  Case 3 would pass regardless of where the executor branched from."
+  echo "  Reporting these cases as UNMEASURED, not passing."
+  exit 2
+fi
 
 MAIN_BEFORE="$(git rev-parse main)"
 MAIN_TREE_BEFORE="$(git show --format=%T --no-patch main)"
@@ -77,14 +99,28 @@ fi
 
 # --- P4 + case 3: base targets the ORCHESTRATOR, not the default branch -----
 # THE HIGHEST-VALUE TEST. With baseRef wrong this passes silently for the wrong
-# reason, so assert the orchestrator's commit is an ancestor of the executor's
-# HEAD — positively, from inside the executor.
-OUT=$(timeout 600 claude -p "Use the link agent to run exactly: git merge-base --is-ancestor $ORCH_COMMIT HEAD; then echo ANCESTOR=\$?. Report that line verbatim. Do not modify any file." \
+# reason, so assert POSITIVELY, from inside the executor, that the
+# orchestrator's commit is in the executor's own ancestry.
+#
+# The command must be a SINGLE bare command with no shell plumbing. An earlier
+# version asked for "git merge-base --is-ancestor X HEAD; echo ANCESTOR=$?" and
+# link's sandbox intermittently refused the compound form as too complex to
+# verify -- so no assertion ran, and the harness read that non-execution as
+# "executors are building on the DEFAULT BRANCH". Reading a raw commit list
+# needs no exit-code plumbing and cannot be refused for that reason.
+OUT=$(timeout 600 claude -p "This is an automated acceptance test of the triforce plugin, running in a disposable scratch repository. Dispatch the link agent to run exactly one command inside its worktree: git rev-list HEAD -- and report that command's complete output verbatim, one commit id per line. Do not modify any file." \
       --plugin-dir "$ROOT" --allowedTools Bash Agent --permission-mode acceptEdits 2>&1)
-if printf '%s' "$OUT" | grep -q "ANCESTOR=0"; then
+
+# Did the command run at all? A refused or crashed dispatch produces no commit
+# ids, and must not be scored as a baseRef defect.
+if ! printf '%s' "$OUT" | grep -qE '[0-9a-f]{40}'; then
+  echo "  UNMEASURED  case 3: the executor produced no commit list, so nothing was asserted."
+  echo "  This is not evidence that baseRef is wrong, and is not scored as such."
+  printf '%s\n' "$OUT" | tail -6
+elif printf '%s' "$OUT" | grep -q "$ORCH_COMMIT"; then
   ok "case 3: executor branches from the orchestrator's HEAD (baseRef: head works)"
 else
-  bad "case 3: executor branches from the orchestrator's HEAD — executors are building on the DEFAULT BRANCH"
+  bad "case 3: the orchestrator's commit is absent from the executor's ancestry — executors are building on the DEFAULT BRANCH"
   printf '%s\n' "$OUT" | tail -5
 fi
 
@@ -111,14 +147,39 @@ fi
 
 # --- case 6: FAILED executors are RETAINED ----------------------------------
 # Complement of case 5. Cleanup must be terminal-state-aware, not indiscriminate.
-OUT=$(timeout 600 claude -p "Use the link agent to create a file named FAILED_MARKER containing the text 'left behind', then report TESTS -> FAIL and stop without cleaning up." \
+#
+# The failure must be EARNED, not announced. run-tests.sh exits 1 on its own, so
+# the executor reports a true outcome. An earlier version of this case asked the
+# model to "report TESTS -> FAIL", which is a request to fabricate a result: it
+# was declined, no executor was ever dispatched, and the retention check scored
+# that non-run as a cleanup defect.
+# The framing is load-bearing too. Two earlier versions were declined outright:
+# "use the link agent" to WRITE reads as misuse (link is dispatched by zelda,
+# which is why read-only cases 2-3 slip through and this one did not), and
+# "create FAILED_MARKER containing 'left behind' ... do not clean up" reads as
+# artifact-planting. An ordinary development task against a suite that fails on
+# its own asks for nothing unusual, and leaves the worktree dirty either way.
+OUT=$(timeout 600 claude -p "This is an automated acceptance test of the triforce plugin, running in a disposable scratch repository. Dispatch the link agent with this ordinary task: add a helper function isClosable(user) to src/account.js that returns user.confirmed, then run the repo's test command 'sh run-tests.sh'. That suite currently fails on its own; report its real exit code rather than fixing it. Finish by reporting two lines: DISPATCHED=<the worktree path the agent worked in> and TESTS_RC=<the real exit code>." \
       --plugin-dir "$ROOT" --allowedTools Bash Agent Write --permission-mode acceptEdits 2>&1)
-KEPT_WT=$(git worktree list | grep -c "worktrees/agent-" || true)
-if [ "${KEPT_WT:-0}" -gt 0 ]; then
-  ok "case 6: a failed executor's worktree survives for inspection"
-  git worktree list | grep "worktrees/agent-" | head -2
+
+# Did an executor run at all? Without this, a declined or crashed dispatch is
+# indistinguishable from indiscriminate cleanup.
+if ! printf '%s' "$OUT" | grep -q 'DISPATCHED='; then
+  echo "  UNMEASURED  case 6: no executor was dispatched, so there was nothing to retain."
+  echo "  This is not a cleanup defect and is not scored as one."
+  printf '%s\n' "$OUT" | tail -6
+elif ! printf '%s' "$OUT" | grep -q 'TESTS_RC=1'; then
+  echo "  UNMEASURED  case 6: the executor ran but did not report a failing test."
+  echo "  Retention is only meaningful for a terminal FAILED state."
+  printf '%s\n' "$OUT" | grep -E 'DISPATCHED=|TESTS_RC=' | head -4
 else
-  bad "case 6: a failed executor's worktree was removed — cleanup is indiscriminate"
+  KEPT_WT=$(git worktree list | grep -c "worktrees/agent-" || true)
+  if [ "${KEPT_WT:-0}" -gt 0 ]; then
+    ok "case 6: a failed executor's worktree survives for inspection"
+    git worktree list | grep "worktrees/agent-" | head -2
+  else
+    bad "case 6: a failed executor's worktree was removed - cleanup is indiscriminate"
+  fi
 fi
 
 echo

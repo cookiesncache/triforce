@@ -102,10 +102,13 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 93 checks green, offline, must stay green
+bash acceptance/run.sh                    # DONE — 98 checks green, offline, must stay green
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
-bash acceptance/probe-harness.sh          # PARTIAL — case 2 green, then hits the line-55 bug
-bash acceptance/live-cases.sh --case 12   # NOT RUN — idempotence
+bash acceptance/probe-harness.sh          # DONE — 7/7 green, PROBE_EXIT=0 (2026-09-03)
+                                         #   case 6 is dispatch-flaky: 2 of 4 runs came back
+                                         #   UNMEASURED because the model declined the prompt.
+                                         #   That is the guard working, not a regression. Re-run.
+bash acceptance/live-cases.sh --case 12   # FAILED — idempotence. Read the section below FIRST.
 bash acceptance/live-cases.sh --case 13   # NOT RUN — fix-and-re-audit, the literal complaint
 bash acceptance/live-cases.sh --case 15   # NOT RUN — floor ablation
 bash acceptance/live-cases.sh --case 17   # NOT RUN — THE FALSIFIER
@@ -113,12 +116,45 @@ bash acceptance/live-cases.sh --case 17   # NOT RUN — THE FALSIFIER
 
 Then, still to be **built**, not just run:
 
-1. **navi** — needs CLI ≥ 2.1.219 first. Build it, run the A/B, then apply the decision rule below.
+1. **navi** — the CLI blocker is gone (2.1.258 has the env var). Build it, run the A/B, then
+   apply the decision rule below. Do not build it before the A/B.
 2. **The plan gate's four arms** — (i) in-context self-critique, (ii) fresh zelda subagent,
    (iii) fresh + ganondorf, (iv) fresh + ganondorf as a **delete-only refuter**.
 3. **Setup-from-a-clean-machine** verification, following only the README.
 4. **Case 16**, effective false positives over rolling windows — genuinely cannot be done yet; it
    needs production audits to accumulate.
+
+### Case 12 FAILED — 2026-09-03, and it is not yet clear that the design is at fault
+
+```
+case 12 — idempotence
+  FAIL  idempotence: 1 criterion(s) appeared only on the second run — the schema is leaking
+```
+
+This is the first non-degenerate run of case 12 — before the extraction fix every arm scored
+zero, so the comparison could not fail. **Do not report this as a design failure yet, and do
+not explain it away either.** Two things must be settled first, in this order:
+
+1. **The harness counts the wrong population.** The spec says *"ZERO new **blocking** entries."*
+   `crits()` extracts every `criterion_id` in the gated output regardless of severity, so a
+   second-run `minor` finding trips a check that was written about blocking ones. The gate
+   emits each surviving candidate object unchanged, so `severity` **is** present in the output
+   JSON and can be filtered. Fix the harness to count blocking-only, then re-run. Case 13 has
+   the same flaw: it writes `blocking-r1.txt` / `blocking-r2.txt` from the same unfiltered
+   helper, so **fix both together** or case 13's drift metric will be wrong in the same way.
+2. **Which criterion leaked?** Case 12 prints only a count. Case 13 already prints the drifting
+   ids via `comm -13`; give case 12 the same output before re-running, or the next session
+   inherits the same blind number.
+
+If the leak survives a blocking-only re-run, it is real and it is the schema leaking — say so
+plainly. The asymmetry is deliberate and correct: the check counts criteria present in run 2 and
+absent from run 1, because a *new* finding on re-audit is precisely the bug. Noise in the other
+direction is not.
+
+One further deviation worth knowing about, which does **not** invalidate the result: the spec
+frames case 12 as a re-run *"on an unchanged diff that returned PASS"*, and the shared fixture
+diff carries seeded defects, so round 1 does not return PASS. The harness is testing the
+stronger property — stability of the finding set on any unchanged diff.
 
 ### Case 17 deserves special attention
 
@@ -198,12 +234,34 @@ the one multi-model arrangement the research supports.
   never handed a candidate. Verifying that the *model* emits findings does not verify
   that the *harness* can read them; check the whole path.
 
-- **`probe-harness.sh:55` writes to `src/app.js` in a sandbox that has no `src/`.**
-  The redirect fails, `git commit -qam` then has nothing to commit, its failure is
-  swallowed by `>/dev/null 2>&1`, and `ORCH_COMMIT` silently becomes the *previous*
-  HEAD. Case 3 would then assert that an executor can see a commit that was never
-  created. **Not yet fixed.** Case 2's checks pass before this point; 3–6 are
-  unverified rather than failing.
+- **A NON-EXECUTION IS NOT A DEFECT.** This bit three times in one session, in three
+  different disguises, and every disguise produced a *confident false alarm* rather than
+  an error. Fixed 2026-09-03; four offline checks in `run.sh` now hold the line.
+  - *The fixture never built.* `probe-harness.sh:55` wrote to `src/app.js` in a scratch
+    repo whose `mkdir -p "$R/.claude/src"` never created `src/`. The redirect failed, the
+    commit had nothing to commit, its failure was swallowed by `>/dev/null 2>&1`, and
+    `ORCH_COMMIT` became main's own tip. **Case 3 — the highest-value test in the file —
+    then passed vacuously**, asserting that an executor could see a commit reachable from
+    main no matter where it branched. There is now a fixture guard that aborts if
+    `ORCH_COMMIT` is an ancestor of `main`, and `run.sh` lifts and runs the real fixture
+    block rather than restating it, so a restated copy cannot drift into agreement with a
+    broken original.
+  - *The sandbox refused the command.* Case 3 asked for `git merge-base --is-ancestor X
+    HEAD; echo ANCESTOR=$?`; link's sandbox intermittently declined the compound form as
+    too complex to verify. No assertion ran, and the harness reported **"executors are
+    building on the DEFAULT BRANCH"** — a serious false alarm, and a flaky one: the same
+    command had passed twice before. Case 3 now asks for one bare `git rev-list HEAD` and
+    greps the ancestry directly. No exit-code plumbing, nothing to refuse.
+  - *The model declined the task.* Case 6 asked link to "report TESTS -> FAIL", which is a
+    request to fabricate a result; it was declined, no executor was ever dispatched, and
+    the harness reported indiscriminate cleanup. Two further framings were also declined —
+    "use the link agent" for a **write** task reads as misuse (link is dispatched by zelda,
+    which is why read-only cases 2–3 slipped through and this one did not), and "create
+    FAILED_MARKER containing 'left behind' … do not clean up" reads as artifact-planting.
+    What works is an ordinary development task against a suite that fails on its own.
+  **The general rule: any case that dispatches an agent must be able to distinguish
+  "the assertion ran and was false" from "the assertion never ran," and must report the
+  second as UNMEASURED.** This is invariant 10 wearing different clothes.
 
 - **`python3` on Windows is a Store alias stub** that exists on PATH and fails on exec. `gate.sh`
   probes interpreters by running them. This once made five negative assertions go green against a
@@ -251,8 +309,9 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **93** checks (89 + 4 guarding the extraction defect),
-  offline, currently green. Keep it green.
+- **`acceptance/run.sh`** — **98** checks (89 + 4 guarding the extraction defect,
+  + 5 guarding the probe-harness fixture and the non-execution class), offline,
+  currently green. Keep it green.
 - Installed as `triforce@cookiesncache-marketplace`, **~694 tokens always-on** (the recorded baseline).
 
 ## Definition of done — current state
@@ -261,8 +320,12 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 
 Nothing is blocked on access any more — all three environmental blockers are cleared.
 The remaining eight are blocked on **work**, not permission, except case 16, which
-needs production audits to accumulate. The next session can run cases 12, 13, 15 and 17
-immediately; fix `probe-harness.sh:55` first if cases 3–6 are wanted.
+needs production audits to accumulate.
+
+Cases 2–6 are green as of 2026-09-03, and green *meaningfully* for the first time:
+case 3 previously could not have failed. Case 12 has run and FAILED; read its section
+above before touching cases 13, 15 or 17, because the severity-filtering flaw it exposes
+in `crits()` affects case 13 identically.
 
 **navi and the plan gate remain CUT and DEFERRED.** The CLI now permits their A/Bs, but
 permitting is not measuring, and the issue's decision rule turns on the measurement.

@@ -229,6 +229,76 @@ for _h in acceptance/clean-corpus.sh acceptance/live-cases.sh; do
 done
 rm -f "$_xtr"
 
+# --- the probe harness's own fixture ----------------------------------------
+# probe-harness.sh case 3 is the highest-value live test: it asserts an executor
+# branches from the ORCHESTRATOR's HEAD, not the default branch. It is also the
+# easiest test in the repo to pass for the wrong reason -- if the orchestrator's
+# commit is reachable from main, the assertion holds no matter where the
+# executor branched. That is exactly what happened: the fixture wrote src/app.js
+# into a directory it never created, the commit silently never happened, and
+# ORCH_COMMIT was main's own tip. Cases 3-4 were green and meaningless.
+#
+# So this runs the harness's REAL fixture block, lifted from the file rather
+# than restated here, and checks the two properties case 3 depends on. A
+# restated copy could drift back into agreement with a broken original; this
+# cannot.
+_fx="$(mktemp)"
+sed -n '/^# --- a scratch repo with the prerequisite set correctly/,/^MAIN_BEFORE=/p'   acceptance/probe-harness.sh | sed '$d' > "$_fx"
+if [ -s "$_fx" ] && grep -q 'ORCH_COMMIT=' "$_fx"; then
+  _fxout=$(
+    WORK="$(mktemp -d)"
+    # shellcheck disable=SC1090
+    . "$_fx" >/dev/null 2>&1 || { echo "SETUP_ABORTED"; rm -rf "$WORK"; exit 0; }
+    printf 'TRACKED=%s ' "$(git ls-files | tr '
+' ',')"
+    if git merge-base --is-ancestor "$ORCH_COMMIT" main 2>/dev/null; then
+      printf 'ORCH_ON_MAIN=yes'
+    else
+      printf 'ORCH_ON_MAIN=no'
+    fi
+    cd / && rm -rf "$WORK"
+  )
+  case "$_fxout" in
+    *"src/app.js"*) sok "probe fixture actually creates the file its commits depend on" ;;
+    *)              sbad "probe fixture does not track src/app.js (got: $_fxout)" ;;
+  esac
+  case "$_fxout" in
+    *ORCH_ON_MAIN=no) sok "probe fixture: case 3 cannot pass vacuously (orch commit is off main)" ;;
+    *)               sbad "probe fixture: orchestrator commit is reachable from main -- case 3 is vacuous" ;;
+  esac
+else
+  sbad "could not lift the probe harness fixture block (its markers moved)"
+fi
+rm -f "$_fx"
+
+# and the guard that makes the above a hard stop rather than a silent green.
+if grep -q 'merge-base --is-ancestor "\$ORCH_COMMIT" main' acceptance/probe-harness.sh; then
+  sok "probe-harness aborts rather than report a vacuous case 3"
+else
+  sbad "probe-harness has no guard against a vacuous case 3"
+fi
+
+# A NON-EXECUTION IS NOT A DEFECT. Both live cases in probe-harness dispatch an
+# agent that can decline, be sandbox-refused, or crash. Case 3 once reported
+# "executors are building on the DEFAULT BRANCH" because a compound command was
+# refused, and case 6 once reported indiscriminate cleanup because the executor
+# was never dispatched at all. Each needs a branch that says UNMEASURED.
+_unmeas=$(grep -c 'UNMEASURED  case' acceptance/probe-harness.sh 2>/dev/null || echo 0)
+if [ "${_unmeas:-0}" -ge 3 ]; then
+  sok "probe-harness reports UNMEASURED for a non-execution instead of a defect"
+else
+  sbad "probe-harness can still score a declined or refused dispatch as a defect ($_unmeas guards)"
+fi
+
+# and case 3's assertion must not depend on shell plumbing the sandbox refuses.
+# Comment lines are stripped first: the file quotes the refused idiom verbatim
+# to record why it was replaced, and that documentation must not trip the check.
+if grep -vE '^[[:space:]]*#' acceptance/probe-harness.sh | grep -q 'ANCESTOR=\$?'; then
+  sbad "case 3 still asks for a compound command; the sandbox refuses it intermittently"
+else
+  sok "case 3 asserts via a bare command, with no exit-code plumbing to refuse"
+fi
+
 echo
 echo "  $SPASS passed, $SFAIL failed"
 SUITES=$((SUITES + 1)); [ "$SFAIL" -eq 0 ] && SUITES_OK=$((SUITES_OK + 1))
@@ -241,7 +311,7 @@ run_suite "the four-check gate (cases 10, 14)" acceptance/test-gate.sh
 
 # --- cases that need a live model or a newer CLI ----------------------------
 defer "case 2,3,4,5,6 (isolation, base-targets-orchestrator, sole merge point, cleanup, retention) — need a live model to dispatch link. Run acceptance/probe-harness.sh when authenticated."
-defer "case 7 (navi degradation, two arms) — navi is CUT pending its A/B; and CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH is not implemented on this CLI (landed in 2.1.219)."
+defer "case 7 (navi degradation, two arms) — navi is CUT pending its A/B. The CLI blocker is gone (CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH is present from 2.1.219; this machine runs 2.1.258), so what remains is a decision, not an environment limit."
 defer "case 11 (clean-return rate, THE HEADLINE METRIC) — needs a live model. Run acceptance/clean-corpus.sh when authenticated."
 defer "case 12,13 (idempotence; fix-and-re-audit rounds 1-3) — need a live model. Run acceptance/live-cases.sh --case 12 / --case 13 when authenticated."
 defer "case 15 (floor ablation) — needs a live model; the floor-free static check above is its cheap proxy, not a substitute. Run acceptance/live-cases.sh --case 15."
