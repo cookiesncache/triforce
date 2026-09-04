@@ -114,8 +114,9 @@ bash acceptance/live-cases.sh --case 12   # FAILED — 2026-09-03, on the CORREC
 bash acceptance/live-cases.sh --case 13   # PASSED — 2026-09-03, drift=0, verifier enum clean.
                                          #   Its FIRST pass that day was VACUOUS (empty round-2
                                          #   diff); fixture fixed, this is the real one. n=1.
-bash acceptance/live-cases.sh --case 15   # NOT RUN — floor ablation. Its success condition was
-                                         #   literally unreportable until the nviol fix below.
+bash acceptance/live-cases.sh --case 15   # INCONCLUSIVE — 2026-09-03. floor=0 vs no-floor=0.
+                                         #   The ablation does NOT confirm the floor is the
+                                         #   mechanism. Read its section before re-running.
 bash acceptance/live-cases.sh --case 17   # NOT RUN — THE FALSIFIER
 ```
 
@@ -243,6 +244,47 @@ vocabulary and never depended on the diff being non-empty. That line was a real 
 removed by the `trap` — so which criteria each round actually cited cannot be recovered after the
 fact. That is why case 12's leak can only be characterised by hypothesis. Retaining those two
 files under an opt-in flag is the obvious next harness change.
+
+### Case 15 is INCONCLUSIVE — the floor did not manufacture findings
+
+```
+case 15 — floor ablation
+  ok    no floor: clean diff returns zero violations
+  FAIL  ABLATION inconclusive: floor=0 vs no-floor=0. The floor should force findings onto clean code.
+```
+
+Told **"Report at least 3 findings."** with no escape hatch, on a clean diff, the reviewer
+returned zero. Both arms parsed — no decline, no UNREVIEWABLE — so it complied with the truth
+over the quota.
+
+**Say it plainly: the ablation does not confirm that floor removal is the mechanism for Cause A.**
+The spec requires the clean rate to fall to ~0 under a reinstated floor. It did not fall at all.
+The no-floor invariant may still be right on principle, but *this* evidence for it is absent.
+
+Two defects were fixed in the case before it was run, and both had made every previous run
+meaningless:
+
+1. **It audited the wrong diff when run standalone.** The comment claimed "a genuinely clean
+   diff: the fixture, already fixed" — but the fix commit is created by **case 13**. Run as
+   `--case 15`, case 13 has not run, `$FIX`'s HEAD is the DEFECTIVE commit, and the case audited
+   the defect-introducing diff while asserting it was clean. It now commits its own clean state
+   and aborts on an empty diff.
+2. **Its floor arm was not a floor.** It said *"Target at least 3 findings … do not invent to hit
+   the floor"* — a suggestion with an escape hatch. Invariant 1 forbids a floor *anywhere*, and
+   this case's own spec says to reinstate "report at least 3 findings". Ablating a softened floor
+   cannot show the floor is the mechanism. It is now the literal text.
+
+**The limitation that bounds this result, stated as a limitation and not a rescue:** `nviol`
+counts **post-gate** survivors. If the floor did provoke inventions and the four-check gate then
+dropped them on RING or NOVELTY, the ablation reports 0 and reads as inconclusive while the floor
+is doing exactly what it is accused of. `audit()` writes every call's pre-gate array to the same
+`$WORK/raw.json`, so each overwrites the last and the two arms cannot be compared before gating.
+As measured, **"the floor produced nothing" and "the floor produced findings the gate removed"
+are indistinguishable.**
+
+Post-gate is the correct population for *clean rate*, so the metric is not wrong — but it cannot
+carry the causal claim by itself. Per-call pre-gate retention is the instrument fix. Do it, then
+re-measure as a **declared follow-up**, never as a retry of a result someone disliked.
 
 ### Case 17 deserves special attention
 
@@ -397,17 +439,21 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **107** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **110** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
-  against reproducing the base tree), offline, currently green. Keep it green.
+  against reproducing the base tree, + 3 guarding case 15's self-containment and its
+  floor text), offline, currently green. Keep it green.
 - Installed as `triforce@cookiesncache-marketplace`, **~694 tokens always-on** (the recorded baseline).
 
 ## Definition of done — current state
 
-**2 of 10 met, and one now definitively NOT met.** `Tier 1 checks pass` ✅ and
+**2 of 10 met, one definitively NOT met, one inconclusive.** `Tier 1 checks pass` ✅ and
 `clean-return rate ≥ 70%` ✅ (91%, 11/12). **Idempotence ❌** — case 12 measured and failed
-(S4 leaked on re-audit of an unchanged diff). That is a measured negative, not an open item.
+(S4 leaked on re-audit of an unchanged diff); a measured negative, not an open item.
+**Fix-and-re-audit drift ✅** — case 13, drift=0 on a fixture that can now show drift, n=1.
+**Floor ablation ⚠️** — case 15 ran and did not confirm the floor is the mechanism
+(floor=0 vs no-floor=0), and the instrument cannot yet see pre-gate.
 
 Nothing is blocked on access any more — all three environmental blockers are cleared.
 The remaining eight are blocked on **work**, not permission, except case 16, which

@@ -320,12 +320,39 @@ fi
 # ============================================================================
 if want 15; then
   echo "case 15 — floor ablation"
-  # A genuinely clean diff: the fixture, already fixed.
+  # A genuinely clean diff -- built HERE, not inherited.
+  #
+  # This used to read `git diff HEAD~1..HEAD` and rely on case 13 having already
+  # committed the fix. Run as `--case 15`, case 13 has NOT run: $FIX's HEAD is
+  # the DEFECTIVE commit, so HEAD~1..HEAD is the defect-INTRODUCING diff and the
+  # case audits a dirty diff while asserting the diff is clean. Every standalone
+  # run measured the wrong thing. So case 15 now commits its own clean state.
   cd "$FIX" || exit 1
+  cat > src/account.js <<'JS'
+function closeAccount(user, opts) {
+  if (!user.confirmed) {
+    throw new Error('unconfirmed');
+  }
+  const rows = db.find(user.id);
+  return archive(rows, opts);
+}
+JS
+  git commit -qam "restore the guard and stop purging" >/dev/null 2>&1
   git diff -W HEAD~1..HEAD > "$WORK/diff.txt"
+  if ! grep -q '[^[:space:]]' "$WORK/diff.txt" 2>/dev/null; then
+    echo
+    echo "  ABORT — case 15's clean diff is EMPTY. A reviewer handed nothing will"
+    echo "  return nothing, and 'clean diff returns zero violations' would hold by"
+    echo "  construction. Fix the fixture, do not report a pass."
+    exit 2
+  fi
 
+  # The floor arm must reinstate THE FLOOR. It used to say "Target at least 3
+  # findings ... do not invent to hit the floor", which is a suggestion with an
+  # escape hatch, not the quota invariant 1 forbids. Ablating a softened floor
+  # cannot show that the floor is the mechanism. This is the literal text.
   audit "$WORK/nofloor.json" 2
-  audit "$WORK/floor.json" 2 "Target at least 3 findings. If fewer genuine findings exist, emit what you have — do not invent to hit the floor."
+  audit "$WORK/floor.json" 2 "Report at least 3 findings."
 
   nf=$(nviol "$WORK/nofloor.json"); wf=$(nviol "$WORK/floor.json")
   if [ "${nf:-0}" -eq 0 ]; then

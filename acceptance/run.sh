@@ -442,6 +442,36 @@ else
   sbad "case 13 has no guard against auditing an empty round-2 diff"
 fi
 
+# --- case 15 must build its own clean diff, and ablate a REAL floor ----------
+# It used to `git diff HEAD~1..HEAD` and rely on case 13 having committed the fix
+# first. Run as `--case 15`, case 13 has not run, HEAD is the DEFECTIVE commit,
+# and the case audits the defect-introducing diff while asserting it is clean.
+# Comments are stripped first. The block quotes the old escape-hatch wording
+# verbatim to record why it was replaced, and that documentation must not trip
+# the check below -- the same trap the extraction and ANCESTOR checks fell into.
+_c15="$(sed -n '/^# CASE 15/,/^# CASE 17/p' acceptance/live-cases.sh | grep -vE '^[[:space:]]*#')"
+if [ -z "$_c15" ]; then
+  sbad "could not lift case 15 from live-cases.sh"
+else
+  if printf '%s' "$_c15" | grep -qE '^[[:space:]]*git commit .*&&|^[[:space:]]*git commit -qam'; then
+    sok "case 15 commits its own clean state instead of inheriting case 13's"
+  else
+    sbad "case 15 inherits \$FIX's HEAD -- run standalone it audits the DEFECTIVE diff"
+  fi
+  # invariant 1 is "no finding floor ANYWHERE"; the ablation arm is the one
+  # place it is deliberately reinstated, and it must reinstate the real thing.
+  if printf '%s' "$_c15" | grep -qF 'do not invent to hit the floor'; then
+    sbad "case 15's floor arm carries an escape hatch -- it ablates a suggestion, not a floor"
+  else
+    sok "case 15's floor arm reinstates the literal floor, with no escape hatch"
+  fi
+  if printf '%s' "$_c15" | grep -qF "case 15's clean diff is EMPTY"; then
+    sok "case 15 aborts rather than call an empty diff a clean one"
+  else
+    sbad "case 15 has no guard against auditing an empty diff"
+  fi
+fi
+
 echo
 echo "  $SPASS passed, $SFAIL failed"
 SUITES=$((SUITES + 1)); [ "$SFAIL" -eq 0 ] && SUITES_OK=$((SUITES_OK + 1))
