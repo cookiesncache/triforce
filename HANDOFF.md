@@ -109,9 +109,8 @@ bash acceptance/probe-harness.sh          # DONE — 7/7 green, PROBE_EXIT=0 (20
                                          #   case 6 is dispatch-flaky: 2 of 4 runs came back
                                          #   UNMEASURED because the model declined the prompt.
                                          #   That is the guard working, not a regression. Re-run.
-bash acceptance/live-cases.sh --case 12   # RE-RUN NEEDED — the 2026-09-03 FAIL is VOID; it
-                                         #   counted the wrong population. Harness fixed, case
-                                         #   NOT re-measured. Read the section below FIRST.
+bash acceptance/live-cases.sh --case 12   # FAILED — 2026-09-03, on the CORRECTED blocking-only
+                                         #   population. S4 leaked. This one is real. Section below.
 bash acceptance/live-cases.sh --case 13   # NOT RUN — fix-and-re-audit, the literal complaint
 bash acceptance/live-cases.sh --case 15   # NOT RUN — floor ablation. Its success condition was
                                          #   literally unreportable until the nviol fix below.
@@ -166,24 +165,36 @@ All four are locked in by seven offline checks in `run.sh`, two of which **lift 
 out of `live-cases.sh` and run them** rather than grepping for their presence — a filter that
 exists but does not filter is the same false green as no filter at all.
 
-**What is still owed is the measurement.** None of the above is a result. Case 12 has not been
-run since the fix and its outcome is unknown:
-
-```bash
-bash acceptance/live-cases.sh --case 12
-```
-
-It was attempted immediately after the fix, on 2026-09-03, and could not run:
+### The re-run happened. Case 12 FAILS, and this result is real
 
 ```
-CANNOT RUN: headless claude is not usable here.
-got: Failed to authenticate: OAuth session expired and could not be refreshed
+case 12 — idempotence
+  FAIL  idempotence: 1 blocking criterion(s) appeared only on the second run — the schema is leaking
+        S4
 ```
 
-That is the auth gate doing its job, not a new blocker — the same machine ran
-`probe-harness.sh` live earlier the same day. Re-authenticate an interactive session
-(`/login`) and run it again. **UNMEASURED is not a pass**, and this attempt must not be
-recorded as one.
+2026-09-03, on the corrected blocking-only population, with the leaked id named. **The leak
+survived. Say it plainly: the schema is leaking.** Re-auditing an unchanged diff produced a
+blocking finding the first audit did not produce, so the finding population is not bounded by
+the diff and the criteria — it varies with the run. That is the defect the case exists to catch,
+and it is now measured rather than inferred.
+
+**Do not discount it on any of the following, all of which were checked first:**
+
+- It is not the wrong population. The filter is blocking-only, matching the spec's own words.
+- It is not a non-execution. Both rounds returned findings; the UNMEASURED branch did not fire.
+- It is not a broken counter. `nviol` and `bcrits` are both exercised by `run.sh` against
+  fixtures shaped like real gate output.
+
+**One observation, offered as a lead and not as an excuse:** the leaked criterion is **S4**,
+and S1–S6 are the SAFETY set, which `gate.sh` holds **exempt from the finding cap**
+(`kept = safety + other[:cap]`). A SAFETY finding therefore always survives truncation. Whether
+the leak is specific to cap-exempt criteria is unknown from one trial and is the obvious next
+measurement — but it does not soften the verdict, and a second trial must be run as a
+pre-declared characterisation, never as a retry hoping for green.
+
+An earlier attempt the same day was refused by the auth gate (`OAuth session expired`) and was
+recorded as UNMEASURED, not as a pass. The token refreshed and the run above is the real one.
 
 If a blocking criterion still appears only on the second run, the leak is real and it is the
 schema leaking — say so plainly. The asymmetry is deliberate and correct: the check counts
@@ -349,23 +360,26 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **98** checks (89 + 4 guarding the extraction defect,
-  + 5 guarding the probe-harness fixture and the non-execution class), offline,
-  currently green. Keep it green.
+- **`acceptance/run.sh`** — **105** checks (89 + 4 guarding the extraction defect,
+  + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
+  blocking-only population and the counters it rests on), offline, currently green.
+  Keep it green.
 - Installed as `triforce@cookiesncache-marketplace`, **~694 tokens always-on** (the recorded baseline).
 
 ## Definition of done — current state
 
-**2 of 10 met.** `Tier 1 checks pass` ✅ and `clean-return rate ≥ 70%` ✅ (91%, 11/12).
+**2 of 10 met, and one now definitively NOT met.** `Tier 1 checks pass` ✅ and
+`clean-return rate ≥ 70%` ✅ (91%, 11/12). **Idempotence ❌** — case 12 measured and failed
+(S4 leaked on re-audit of an unchanged diff). That is a measured negative, not an open item.
 
 Nothing is blocked on access any more — all three environmental blockers are cleared.
 The remaining eight are blocked on **work**, not permission, except case 16, which
 needs production audits to accumulate.
 
 Cases 2–6 are green as of 2026-09-03, and green *meaningfully* for the first time:
-case 3 previously could not have failed. Case 12's FAIL is VOID — it counted every severity
-where the spec counts blockers — and the harness has been fixed but **not re-run**. Read its
-section above before touching cases 13, 15 or 17: the same helper feeds case 13, and the
+case 3 previously could not have failed. **Case 12 has now failed for real**, on the corrected
+population, leaking S4. Read its section above before touching cases 13, 15 or 17: case 13 runs
+the same drift metric through the same helper and should be expected to show it too, and the
 `nviol()` defect found alongside it made case 15's success condition unreportable.
 
 **navi and the plan gate remain CUT and DEFERRED.** The CLI now permits their A/Bs, but
