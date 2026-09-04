@@ -149,8 +149,64 @@ $(cat "$WORK/diff.txt")"
        --violations "$WORK/raw.json" --tier "$tier" > "$out" 2>/dev/null
 }
 
-nviol()  { grep -c '"criterion_id"' "$1" 2>/dev/null || echo 0; }
+# `grep -c` prints 0 AND exits 1 when it matches nothing, so the old
+# `|| echo 0` fallback appended a SECOND zero and nviol returned two lines,
+# each holding a 0. Every numeric test against that -- `[ "$nf" -eq 0 ]` -- died
+# with "integer expression expected" and fell through to its else branch, which
+# is the FAILING branch. Case 15's success condition (a clean diff returns zero
+# violations) could therefore never be reported as a pass, and the UNMEASURED
+# guards in cases 12 and 13 could never fire on the emptiness they exist to
+# catch. One integer, always.
+nviol()  { local n; n=$(grep -c '"criterion_id"' "$1" 2>/dev/null || true); printf '%s' "${n:-0}"; }
 crits()  { grep -oE '"criterion_id": *"[^"]*"' "$1" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' | sort -u; }
+
+# Find an interpreter that actually RUNS -- the same probe as gate.sh, for the
+# same reason: on Windows `python3` is often a Store alias stub that exists on
+# PATH and fails on execution.
+PY=""
+for cand in python python3 py; do
+  if command -v "$cand" >/dev/null 2>&1 && "$cand" -c "print(1)" >/dev/null 2>&1; then
+    PY="$cand"; break
+  fi
+done
+
+# bcrits <gated.json> -- criterion ids of BLOCKING entries only, sorted unique.
+#
+# Cases 12 and 13 are both specified over blocking entries ("ZERO new BLOCKING
+# entries"), but `crits` above is severity-blind, so a second-run `minor`
+# finding tripped a check that was written about blockers. The gate emits each
+# surviving candidate object unchanged, so `severity` IS present and filterable.
+# Absent severity counts as `minor` -- exactly as gate.sh's own sort treats it --
+# because a reviewer that omitted the field has not claimed a blocker.
+#
+# INVARIANT 10 applies to the filter itself. If it cannot parse, it must not
+# quietly return an empty set: empty on both runs makes case 12's `comm -13`
+# return 0 and manufactures a PASS out of a non-execution. Hence the hard exit,
+# and hence every call site writes to a FILE -- never a process substitution,
+# where `exit` would kill only the subshell and hand `comm` an empty stream.
+#
+# The `tr -d` strips the CR that Python's text-mode stdout adds on Windows;
+# without it these ids sort and compare as "C1\r" against grep's plain "C1".
+# `set -o pipefail` at the top of this file is load-bearing here: it is what
+# lets a parse failure inside the pipeline still reach the `|| exit 2`.
+bcrits() {
+  if [ -z "$PY" ]; then
+    echo "live-cases: no working python interpreter; blocking severity cannot be read" >&2
+    echo "live-cases: refusing to emit an empty set, which would fake a clean result" >&2
+    exit 2
+  fi
+  "$PY" -c '
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except Exception as e:
+    sys.stderr.write("live-cases: cannot parse %s: %s\n" % (sys.argv[1], e))
+    sys.exit(2)
+for i in sorted({c.get("criterion_id") or "" for c in data
+                 if (c.get("severity") or "minor").lower() == "blocking"} - {""}):
+    print(i)
+' "$1" | tr -d '\r' || exit 2
+}
 
 # ============================================================================
 # CASE 12 — idempotence
@@ -160,11 +216,29 @@ if want 12; then
   audit "$WORK/r1.json" 2
   audit "$WORK/r1b.json" 2
   a=$(nviol "$WORK/r1.json"); b=$(nviol "$WORK/r1b.json")
-  new=$(comm -13 <(crits "$WORK/r1.json") <(crits "$WORK/r1b.json") | wc -l | tr -d ' ')
-  if [ "${new:-0}" -eq 0 ]; then
-    ok "re-running round 1 on an unchanged diff yields zero NEW criteria (r1=$a r1'=$b)"
+
+  # The spec is written over BLOCKING entries. Count that population -- and
+  # report the all-severity delta beside it rather than silently swapping
+  # populations, so the next reader can see both numbers and judge for himself.
+  bcrits "$WORK/r1.json"  > "$WORK/blk-r1.txt"
+  bcrits "$WORK/r1b.json" > "$WORK/blk-r2.txt"
+  crits  "$WORK/r1.json"  > "$WORK/all-r1.txt"
+  crits  "$WORK/r1b.json" > "$WORK/all-r2.txt"
+  new=$(comm -13 "$WORK/blk-r1.txt" "$WORK/blk-r2.txt" | wc -l | tr -d ' ')
+  anynew=$(comm -13 "$WORK/all-r1.txt" "$WORK/all-r2.txt" | wc -l | tr -d ' ')
+  nblk1=$(wc -l < "$WORK/blk-r1.txt" | tr -d ' ')
+
+  # A run that found nothing at all on a seeded diff has no finding set whose
+  # stability could be tested. Zero new blockers out of zero blockers is not
+  # idempotence; it is a non-execution. INVARIANT 10.
+  if [ "${a:-0}" -eq 0 ]; then
+    echo "  UNMEASURED  case 12: round 1 returned no findings at all on a seeded diff,"
+    echo "              so there is no finding set whose stability could be tested."
+  elif [ "${new:-0}" -eq 0 ]; then
+    ok "re-running round 1 on an unchanged diff yields zero NEW blocking criteria (r1=$a r1'=$b, blocking r1=$nblk1, all-severity new=$anynew)"
   else
-    bad "idempotence: $new criterion(s) appeared only on the second run — the schema is leaking"
+    bad "idempotence: $new blocking criterion(s) appeared only on the second run — the schema is leaking"
+    comm -13 "$WORK/blk-r1.txt" "$WORK/blk-r2.txt" | sed 's/^/        /'
   fi
   echo
 fi
@@ -175,7 +249,7 @@ fi
 if want 13; then
   echo "case 13 — fix-and-re-audit (rounds 1..3)"
   audit "$WORK/s1.json" 2
-  crits "$WORK/s1.json" > "$WORK/blocking-r1.txt"
+  bcrits "$WORK/s1.json" > "$WORK/blocking-r1.txt"
 
   # Apply a real fix, producing a NEW commit — this is what makes E1 legal.
   cd "$FIX" || exit 1
@@ -192,12 +266,16 @@ JS
   git diff -W HEAD~2..HEAD > "$WORK/diff.txt"
 
   audit "$WORK/s2.json" 2
-  crits "$WORK/s2.json" > "$WORK/blocking-r2.txt"
+  bcrits "$WORK/s2.json" > "$WORK/blocking-r2.txt"
 
   # The metric: round-2 blocking entries citing a criterion NOT blocking in
   # round 1. Drift, not volume, is what this case measures.
+  n1=$(nviol "$WORK/s1.json"); n2=$(nviol "$WORK/s2.json")
   drift=$(comm -13 "$WORK/blocking-r1.txt" "$WORK/blocking-r2.txt" | wc -l | tr -d ' ')
-  if [ "${drift:-0}" -eq 0 ]; then
+  if [ "${n1:-0}" -eq 0 ] && [ "${n2:-0}" -eq 0 ]; then
+    echo "  UNMEASURED  case 13: neither round returned a finding on a seeded diff,"
+    echo "              so drift=0 measures nothing. INVARIANT 10."
+  elif [ "${drift:-0}" -eq 0 ]; then
     ok "round 2 cites no criterion that was not blocking in round 1 (drift=0)"
   else
     bad "round 2 drifted onto $drift criterion(s) not blocking in round 1 — THE ORIGINAL BUG"

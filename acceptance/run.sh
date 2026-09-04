@@ -283,7 +283,10 @@ fi
 # "executors are building on the DEFAULT BRANCH" because a compound command was
 # refused, and case 6 once reported indiscriminate cleanup because the executor
 # was never dispatched at all. Each needs a branch that says UNMEASURED.
-_unmeas=$(grep -c 'UNMEASURED  case' acceptance/probe-harness.sh 2>/dev/null || echo 0)
+# `|| true`, not `|| echo 0`: grep -c already prints 0 when it matches nothing,
+# and exits 1 doing it, so `|| echo 0` appends a SECOND zero and the arithmetic
+# test below dies on a two-line value. See the nviol check above.
+_unmeas=$(grep -c 'UNMEASURED  case' acceptance/probe-harness.sh 2>/dev/null || true)
 if [ "${_unmeas:-0}" -ge 3 ]; then
   sok "probe-harness reports UNMEASURED for a non-execution instead of a defect"
 else
@@ -297,6 +300,119 @@ if grep -vE '^[[:space:]]*#' acceptance/probe-harness.sh | grep -q 'ANCESTOR=\$?
   sbad "case 3 still asks for a compound command; the sandbox refuses it intermittently"
 else
   sok "case 3 asserts via a bare command, with no exit-code plumbing to refuse"
+fi
+
+# --- the counter every one of those guards is built on -----------------------
+# nviol() decides whether a round found anything. `grep -c` prints 0 and exits
+# 1 on no match, so a `|| echo 0` fallback emits a SECOND zero and the function
+# returns two lines. `[ "$n" -eq 0 ]` then dies with "integer expression
+# expected" and takes the else branch -- the FAILING one. That made case 15's
+# success condition unreportable and made the UNMEASURED guards inert on
+# exactly the emptiness they exist to catch. Lifted and RUN, not grepped.
+_nv="$(mktemp)"
+sed -n '/^nviol()/p' acceptance/live-cases.sh > "$_nv"
+if [ -s "$_nv" ]; then
+  _nvd="$(mktemp -d)"
+  echo '[]' > "$_nvd/empty.json"
+  # shaped like real gate output -- `json.dump(kept, ..., indent=2)`, one field
+  # per line -- because nviol counts matching LINES, not matches.
+  cat > "$_nvd/two.json" <<'JSON'
+[
+  {
+    "criterion_id": "C1",
+    "severity": "blocking"
+  },
+  {
+    "criterion_id": "S2",
+    "severity": "minor"
+  }
+]
+JSON
+  # shellcheck disable=SC1090
+  _n0=$( . "$_nv"; nviol "$_nvd/empty.json" )
+  _n2=$( . "$_nv"; nviol "$_nvd/two.json" )
+  if [ "$_n0" = "0" ] && [ "$_n2" = "2" ]; then
+    sok "nviol returns one integer (empty=0, two=2), so the numeric guards can fire"
+  else
+    sbad "nviol does not return a single integer (empty='$_n0' two='$_n2')"
+  fi
+  rm -rf "$_nvd"
+else
+  sbad "could not lift nviol from live-cases.sh"
+fi
+rm -f "$_nv"
+
+# --- cases 12 and 13 must count the population they are specified over -------
+# Both are written about BLOCKING entries ("ZERO new blocking entries"), but the
+# harness extracted every criterion_id regardless of severity, so a second-run
+# `minor` finding tripped a check about blockers. Case 12's first non-degenerate
+# run FAILED on exactly that. The filter is lifted from the file and RUN here,
+# not grepped for, because a filter that exists but does not filter is the same
+# false green as no filter at all.
+_bc="$(mktemp)"
+sed -n '/^PY=""$/,/^}$/p' acceptance/live-cases.sh > "$_bc"
+if [ -s "$_bc" ] && grep -q 'bcrits()' "$_bc"; then
+  _bcd="$(mktemp -d)"
+  cat > "$_bcd/g.json" <<'JSON'
+[
+  {"criterion_id": "S2", "severity": "blocking"},
+  {"criterion_id": "C1", "severity": "blocking"},
+  {"criterion_id": "S1", "severity": "minor"},
+  {"criterion_id": "S3"},
+  {"criterion_id": "C1", "severity": "blocking"}
+]
+JSON
+  # shellcheck disable=SC1090
+  _got=$( . "$_bc" >/dev/null 2>&1; bcrits "$_bcd/g.json" 2>/dev/null | tr '\n' ',' )
+  if [ "$_got" = "C1,S2," ]; then
+    sok "bcrits keeps blocking only -- minor and severity-absent entries are dropped"
+  else
+    sbad "bcrits does not filter by severity (got '$_got', want 'C1,S2,')"
+  fi
+  # and it must refuse rather than hand back an empty set it did not earn
+  echo 'not json' > "$_bcd/bad.json"
+  if ( . "$_bc" >/dev/null 2>&1; bcrits "$_bcd/bad.json" ) >/dev/null 2>&1; then
+    sbad "bcrits returns an empty set on unparseable input -- that fakes idempotence"
+  else
+    sok "bcrits refuses unparseable input instead of returning an empty set"
+  fi
+  rm -rf "$_bcd"
+else
+  sbad "could not lift the blocking-severity filter from live-cases.sh (its markers moved)"
+fi
+rm -f "$_bc"
+
+# The blocking files must be written by the filtered helper, in both cases.
+if grep -vE '^[[:space:]]*#' acceptance/live-cases.sh \
+   | grep -qE '^[[:space:]]*crits[[:space:]].*(blocking-r|blk-r)'; then
+  sbad "a blocking population is still written by the severity-blind crits()"
+else
+  sok "cases 12 and 13 both read their blocking population through bcrits"
+fi
+
+# bcrits hard-exits when it cannot parse. Inside <(...) that exit kills only the
+# subshell and hands comm an empty stream -- the refusal becomes a silent pass.
+if grep -vE '^[[:space:]]*#' acceptance/live-cases.sh | grep -qF '<(bcrits'; then
+  sbad "bcrits is called in a process substitution; its refusal cannot escape a subshell"
+else
+  sok "bcrits is never called in a process substitution, so a refusal stops the run"
+fi
+
+# Case 12 previously printed only a count, which told the next session nothing.
+if sed -n '/^# CASE 12/,/^# CASE 13/p' acceptance/live-cases.sh | grep -qF 'comm -13 "$WORK/blk-r1.txt" "$WORK/blk-r2.txt" | sed'; then
+  sok "case 12 names the criteria that leaked, not just how many"
+else
+  sbad "case 12 still reports a bare count with no leaked ids"
+fi
+
+# A NON-EXECUTION IS NOT A DEFECT, here too: zero new blockers out of zero
+# findings is not idempotence, and drift=0 between two empty rounds is not a
+# clean re-audit. Both need a branch that says UNMEASURED.
+_lunm=$(grep -c 'UNMEASURED  case' acceptance/live-cases.sh 2>/dev/null || true)
+if [ "${_lunm:-0}" -ge 2 ]; then
+  sok "cases 12 and 13 report UNMEASURED when a round returned nothing at all"
+else
+  sbad "live-cases can still read an empty finding set as a clean result ($_lunm guards)"
 fi
 
 echo

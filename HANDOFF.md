@@ -102,15 +102,19 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 98 checks green, offline, must stay green
+bash acceptance/run.sh                    # DONE — 105 checks green, offline, must stay green
+                                         #   verified at the committed tip, 2026-09-03
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
 bash acceptance/probe-harness.sh          # DONE — 7/7 green, PROBE_EXIT=0 (2026-09-03)
                                          #   case 6 is dispatch-flaky: 2 of 4 runs came back
                                          #   UNMEASURED because the model declined the prompt.
                                          #   That is the guard working, not a regression. Re-run.
-bash acceptance/live-cases.sh --case 12   # FAILED — idempotence. Read the section below FIRST.
+bash acceptance/live-cases.sh --case 12   # RE-RUN NEEDED — the 2026-09-03 FAIL is VOID; it
+                                         #   counted the wrong population. Harness fixed, case
+                                         #   NOT re-measured. Read the section below FIRST.
 bash acceptance/live-cases.sh --case 13   # NOT RUN — fix-and-re-audit, the literal complaint
-bash acceptance/live-cases.sh --case 15   # NOT RUN — floor ablation
+bash acceptance/live-cases.sh --case 15   # NOT RUN — floor ablation. Its success condition was
+                                         #   literally unreportable until the nviol fix below.
 bash acceptance/live-cases.sh --case 17   # NOT RUN — THE FALSIFIER
 ```
 
@@ -124,34 +128,58 @@ Then, still to be **built**, not just run:
 4. **Case 16**, effective false positives over rolling windows — genuinely cannot be done yet; it
    needs production audits to accumulate.
 
-### Case 12 FAILED — 2026-09-03, and it is not yet clear that the design is at fault
+### Case 12's FAIL is VOID — it counted the wrong population (harness fixed 2026-09-03)
+
+The 2026-09-03 result
 
 ```
 case 12 — idempotence
   FAIL  idempotence: 1 criterion(s) appeared only on the second run — the schema is leaking
 ```
 
-This is the first non-degenerate run of case 12 — before the extraction fix every arm scored
-zero, so the comparison could not fail. **Do not report this as a design failure yet, and do
-not explain it away either.** Two things must be settled first, in this order:
+**does not stand — and it is not evidence of a clean design either.** It measured a population
+the case was never specified over. Both items this section used to list are now done, and two
+further defects surfaced underneath them.
 
-1. **The harness counts the wrong population.** The spec says *"ZERO new **blocking** entries."*
-   `crits()` extracts every `criterion_id` in the gated output regardless of severity, so a
-   second-run `minor` finding trips a check that was written about blocking ones. The gate
-   emits each surviving candidate object unchanged, so `severity` **is** present in the output
-   JSON and can be filtered. Fix the harness to count blocking-only, then re-run. Case 13 has
-   the same flaw: it writes `blocking-r1.txt` / `blocking-r2.txt` from the same unfiltered
-   helper, so **fix both together** or case 13's drift metric will be wrong in the same way.
-2. **Which criterion leaked?** Case 12 prints only a count. Case 13 already prints the drifting
-   ids via `comm -13`; give case 12 the same output before re-running, or the next session
-   inherits the same blind number.
+1. **DONE — the population is blocking-only.** The spec says *"ZERO new **blocking** entries."*
+   `crits()` extracted every `criterion_id` regardless of severity, so a second-run `minor`
+   finding tripped a check written about blockers. `bcrits()` filters on `severity == "blocking"`
+   and treats an absent severity as `minor`, exactly as `gate.sh`'s own sort does. Case 13 shared
+   the helper and is fixed with it. Case 12 now prints the all-severity delta beside the blocking
+   one, so neither number is hidden and neither population is swapped in silently.
 
-If the leak survives a blocking-only re-run, it is real and it is the schema leaking — say so
-plainly. The asymmetry is deliberate and correct: the check counts criteria present in run 2 and
-absent from run 1, because a *new* finding on re-audit is precisely the bug. Noise in the other
-direction is not.
+2. **DONE — case 12 names the ids that leaked**, through the same `comm -13` output case 13 had.
 
-One further deviation worth knowing about, which does **not** invalidate the result: the spec
+3. **FOUND — `nviol()` never returned a usable integer.** `grep -c` prints `0` and exits 1 on no
+   match, so the `|| echo 0` fallback appended a *second* zero and the function returned two
+   lines. Every `[ "$n" -eq 0 ]` against it died with "integer expression expected" and fell
+   through to its else branch — the FAILING one. Consequences: **case 15 could never have
+   reported its own success condition** (a clean diff returning zero violations), and the new
+   UNMEASURED guards would have been inert on precisely the emptiness they exist to catch.
+   `risk-score.sh` had already hit this trap and documented it verbatim; the acceptance harness
+   was carrying the unfixed version.
+
+4. **FOUND — `bcrits` emitted CRLF.** Python's text-mode stdout translates on Windows, so the ids
+   would have sorted and compared as `C1\r` against grep's plain `C1`. Stripped at the source.
+
+All four are locked in by seven offline checks in `run.sh`, two of which **lift the real helpers
+out of `live-cases.sh` and run them** rather than grepping for their presence — a filter that
+exists but does not filter is the same false green as no filter at all.
+
+**What is still owed is the measurement.** None of the above is a result. Case 12 has not been
+run since the fix and its outcome is unknown:
+
+```bash
+bash acceptance/live-cases.sh --case 12
+```
+
+If a blocking criterion still appears only on the second run, the leak is real and it is the
+schema leaking — say so plainly. The asymmetry is deliberate and correct: the check counts
+criteria present in run 2 and absent from run 1, because a *new* finding on re-audit is precisely
+the bug. Noise in the other direction is not.
+
+One further deviation worth knowing about, deliberate and **not** a reason to discount the
+re-run when it happens: the spec
 frames case 12 as a re-run *"on an unchanged diff that returned PASS"*, and the shared fixture
 diff carries seeded defects, so round 1 does not return PASS. The harness is testing the
 stronger property — stability of the finding set on any unchanged diff.
@@ -323,9 +351,10 @@ The remaining eight are blocked on **work**, not permission, except case 16, whi
 needs production audits to accumulate.
 
 Cases 2–6 are green as of 2026-09-03, and green *meaningfully* for the first time:
-case 3 previously could not have failed. Case 12 has run and FAILED; read its section
-above before touching cases 13, 15 or 17, because the severity-filtering flaw it exposes
-in `crits()` affects case 13 identically.
+case 3 previously could not have failed. Case 12's FAIL is VOID — it counted every severity
+where the spec counts blockers — and the harness has been fixed but **not re-run**. Read its
+section above before touching cases 13, 15 or 17: the same helper feeds case 13, and the
+`nviol()` defect found alongside it made case 15's success condition unreportable.
 
 **navi and the plan gate remain CUT and DEFERRED.** The CLI now permits their A/Bs, but
 permitting is not measuring, and the issue's decision rule turns on the measurement.
