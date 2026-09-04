@@ -117,7 +117,9 @@ bash acceptance/live-cases.sh --case 13   # PASSED — 2026-09-03, drift=0, veri
 bash acceptance/live-cases.sh --case 15   # INCONCLUSIVE — 2026-09-03. floor=0 vs no-floor=0.
                                          #   The ablation does NOT confirm the floor is the
                                          #   mechanism. Read its section before re-running.
-bash acceptance/live-cases.sh --case 17   # NOT RUN — THE FALSIFIER
+bash acceptance/live-cases.sh --case 17   # RAN — but UNINFORMATIVE. All three arms scored
+                                         #   F1=1.000. Ceiling effect: (b) COULD NOT beat (a).
+                                         #   The corpus is too easy. Read its section.
 ```
 
 Then, still to be **built**, not just run:
@@ -286,6 +288,74 @@ Post-gate is the correct population for *clean rate*, so the metric is not wrong
 carry the causal claim by itself. Per-call pre-gate retention is the instrument fix. Do it, then
 re-measure as a **declared follow-up**, never as a retry of a result someone disliked.
 
+### Case 17 ran — and it could not have falsified anything (2026-09-03)
+
+#### The result, verbatim
+
+```
+case 17 — the one-round premise, against its own falsifier
+  (a) K parallel, one round          findings=3   TP=3   FP=0   precision=1.000  F1=1.000
+  (b) + forced second round          findings=3   TP=3   FP=0   precision=1.000  F1=1.000
+  (c) K sequential rounds            findings=3   TP=3   FP=0   precision=1.000  F1=1.000
+        NOTE: arm (c) is NOT yet distinct from arm (a) — both are K
+        independent audits unioned, with no round-to-round chaining.
+        Its number is reported, but it is not a sequential arm yet.
+
+  ok    one-round premise holds on this corpus: (a) F1=1.000 >= (b) F1=1.000
+
+  1 passed, 0 failed
+```
+
+#### What it means: a ceiling, not a corroboration
+
+Every arm found exactly `{C1, S2, S4}` — all of ground truth, no false positives. **Arm (a) hit
+the ceiling.** Arm (b) is *constructed* as arm (a) ∪ one extra audit, so `b ⊇ a` by construction:
+with (a) at TP=3/3 and FP=0, (b) cannot raise TP and can only add false positives. **`b > a` was
+mathematically impossible in this run.** The printed `ok` line overstates what happened.
+
+So the honest reading is **not** "the one-round premise holds". It is: **this corpus cannot test
+the premise.** Six lines, three seeded defects, and the reviewer saturates it every time. The
+falsifier needs a corpus where one round demonstrably misses things. **That is now the blocker on
+case 17 — not anything about the design.**
+
+The case now refuses this itself: when arm (a) scores every truth criterion with zero FPs it
+prints `UNINFORMATIVE … THE COMPARISON HAD NO POWER TO FALSIFY`. This run predates that guard;
+its numbers stand, and the guard is what stops the next reader taking them for a corroboration.
+
+One connection worth drawing to case 12, which is suggestive and **not** a result: case 12 showed
+the reviewer's recall on S4 varies between single audits. Here every arm unions 2–3 audits and
+all found S4. Those are consistent — unioning is precisely what masks per-audit recall variance.
+It hints that K-parallel is doing real work, but this test was not designed to show that and
+n=1 cannot carry it.
+
+#### Three defects had to be fixed first, two of them fatal
+
+Read this before trusting any case 17 number printed by an older checkout.
+
+1. **Its diff never existed.** `git diff -W HEAD~2..HEAD~1` needs three commits; the fixture makes
+   two. Standalone it exited 128 — *"ambiguous argument … unknown revision"* — wrote a zero-byte
+   diff, and every arm audited nothing. After cases 13 or 15 the range pointed at *their* commits.
+   The range is now pinned by SHA at fixture time, before any case commits on top of `$FIX`.
+
+2. **The verdict was a lexical comparison of two labels.** `score()` printed its row *and* the F1
+   to stdout and was called as `F1A=$(score …)`, so `F1A` held the whole row. `awk -v` then
+   compared two non-numeric strings — a *string* comparison — and `"(b) …"` sorts after `"(a) …"`,
+   so **`b>a` was TRUE unconditionally and the case reported FALSIFIED on every run**. Shown
+   directly: arm (a) F1=1.000 against arm (b) F1=0.800 still returned `b>a is TRUE`. Under the
+   standing rule not to rationalise a falsifying result, this would have forced a design revision
+   on the alphabetical order of a label. `score()` now sets `SCORE_F1`.
+
+3. **Ground truth omitted S4.** The seeded code purges *before* archiving, so a failing archive
+   leaves rows deleted and unarchived — S4 is genuinely violated, judged from the code alone.
+   Scoring it as a false positive penalised whichever arm searched hardest, which is **arm (b)**.
+   Adding it makes falsification *easier*, so the correction cannot be read as protecting the
+   premise.
+
+**Owed, not silently fixed: arm (c) is not a sequential arm.** It is identical in construction to
+arm (a) — K independent audits unioned, no round-to-round chaining. Its number is printed with
+that stated inline. Building a real sequential arm means deciding how rounds chain, which is a
+design decision.
+
 ### Case 17 deserves special attention
 
 It can falsify the design. If arm (b) — one forced second hunting round — beats arm (a) on F1, then
@@ -439,11 +509,13 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **110** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **119** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
-  floor text), offline, currently green. Keep it green.
+  floor text, + 9 guarding the falsifier's ability to falsify, including a three-way
+  test that drives its verdict chain to every outcome), offline, currently green.
+  Keep it green.
 - Installed as `triforce@cookiesncache-marketplace`, **~694 tokens always-on** (the recorded baseline).
 
 ## Definition of done — current state
@@ -454,6 +526,8 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 **Fix-and-re-audit drift ✅** — case 13, drift=0 on a fixture that can now show drift, n=1.
 **Floor ablation ⚠️** — case 15 ran and did not confirm the floor is the mechanism
 (floor=0 vs no-floor=0), and the instrument cannot yet see pre-gate.
+**The one-round premise ⚠️ UNTESTED** — case 17 ran, every arm scored F1=1.000, and arm (b)
+could not beat a perfect arm (a). A ceiling, not a corroboration. The corpus is the blocker.
 
 Nothing is blocked on access any more — all three environmental blockers are cleared.
 The remaining eight are blocked on **work**, not permission, except case 16, which

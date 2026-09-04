@@ -472,6 +472,103 @@ else
   fi
 fi
 
+# --- THE FALSIFIER MUST BE ABLE TO FALSIFY, AND ABLE NOT TO --------------------
+# Case 17 decides whether the one-round premise survives. Three defects made its
+# verdict independent of its audits:
+#   1. `git diff HEAD~2..HEAD~1` needs three commits; the fixture has two. Run
+#      standalone it died with "unknown revision" and every arm audited an EMPTY
+#      diff -- three nothings, a tie, reported as the premise holding.
+#   2. score() printf'd the row AND the f1 to stdout and was called as
+#      `F1A=$(score ...)`, so F1A held the whole row. awk then compared two
+#      NON-NUMERIC strings, which is a string comparison: "(b) ..." sorts after
+#      "(a) ...", so b>a was TRUE always and the case reported FALSIFIED on every
+#      run. The design would have been revised on the lexical order of a label.
+#   3. Ground truth omitted S4, which the seeded code genuinely violates (purge
+#      before archive), scoring a correct finding as a false positive and
+#      penalising the arm that searches hardest -- arm (b).
+_s17="$(sed -n '/^# CASE 17/,$p' acceptance/live-cases.sh)"
+_l17="$(printf '%s' "$_s17" | grep -vE '^[[:space:]]*#')"
+if [ -z "$_s17" ]; then
+  sbad "could not lift case 17 from live-cases.sh"
+else
+  if printf '%s' "$_l17" | grep -qF 'HEAD~2..HEAD~1'; then
+    sbad "case 17 still uses HEAD~2..HEAD~1 -- standalone that is an empty diff"
+  else
+    sok "case 17 pins its seeded diff by SHA, not by HEAD-relative names"
+  fi
+  if printf '%s' "$_l17" | grep -qF 'F1A=$(score'; then
+    sbad "case 17 captures score()'s printed row as its F1 -- the verdict is a string compare"
+  else
+    sok "case 17 reads F1 from SCORE_F1, not from score()'s printed output"
+  fi
+  if printf '%s' "$_l17" | grep -qF "printf 'C1"; then
+    printf '%s' "$_l17" | grep -qF 'S4' \
+      && sok "case 17's ground truth includes S4, which the seeded code really violates" \
+      || sbad "case 17's ground truth omits S4 -- a correct finding scores as a false positive"
+  else
+    sbad "could not find case 17's ground truth line"
+  fi
+  if printf '%s' "$_l17" | grep -qF 'MUST NOT GUESS'; then
+    sok "case 17 reports UNMEASURED rather than a verdict when F1 is not numeric"
+  else
+    sbad "case 17 can still render a verdict from a non-numeric F1"
+  fi
+  if printf '%s' "$_l17" | grep -qF 'tie between two nothings'; then
+    sok "case 17 refuses to read two empty arms as the premise holding"
+  else
+    sbad "case 17 can still report a tie between empty arms as a corroboration"
+  fi
+
+  # and the scorer itself, lifted and RUN: F1 must come back a bare number.
+  _sc="$(printf '%s' "$_s17" | sed -n '/^  score() {/,/^  }$/p')"
+  if [ -z "$_sc" ]; then
+    sbad "could not lift case 17's score() function"
+  else
+    _scd="$(mktemp -d)"
+    printf 'C1\nS2\nS4\n' | sort > "$_scd/truth.txt"
+    printf 'C1\nS2\n'     | sort > "$_scd/arm.txt"
+    _f1=$( WORK="$_scd"; eval "$_sc"; score "$_scd/arm.txt" "probe" >/dev/null; printf '%s' "$SCORE_F1" )
+    case "$_f1" in
+      0.800) sok "score() returns a bare number (tp=2 fp=0 fn=1 -> F1=0.800)" ;;
+      *[!0-9.]*|"") sbad "score() returns a non-numeric F1 ('$_f1') -- awk would compare strings" ;;
+      *) sbad "score() returned '$_f1', want 0.800" ;;
+    esac
+    rm -rf "$_scd"
+  fi
+
+  # THE VERDICT LOGIC, LIFTED AND RUN ON ALL THREE OUTCOMES.
+  # A falsifier that cannot reach every verdict is not a falsifier. This drives
+  # the real if-chain with synthetic scores and checks each branch is reachable:
+  # a genuine falsification, a genuine hold, and the ceiling refusal that fired
+  # on 2026-09-03 when every arm scored TP=3/3 FP=0 and `b > a` was impossible.
+  _vc="$(printf '%s' "$_s17" | sed -n '/^  if \[ -z "\$F1A" \]; then/,/^  fi$/p')"
+  if [ -z "$_vc" ]; then
+    sbad "could not lift case 17's verdict chain"
+  else
+    _verdict() {   # _verdict <F1A> <F1B> <TPA> <FPA> <truthn> <na> <nb>
+      F1A="$1"; F1B="$2"; TPA="$3"; FPA="$4"; _truthn="$5"; _na="$6"; _nb="$7"
+      ok()  { printf 'OK:%s\n'  "$1"; }
+      bad() { printf 'BAD:%s\n' "$1"; }
+      eval "$_vc"
+    }
+    _ceil=$(_verdict 1.000 1.000 3 0 3 3 3 2>&1)
+    _fals=$(_verdict 0.500 0.900 1 0 3 1 2 2>&1)
+    _hold=$(_verdict 0.900 0.500 2 0 3 2 3 2>&1)
+    case "$_ceil" in
+      *UNINFORMATIVE*) sok "case 17 refuses a ceiling: arm (a) perfect means (b) cannot beat it" ;;
+      *) sbad "case 17 reads a ceiling as a corroboration (got: $(printf '%s' "$_ceil" | head -1))" ;;
+    esac
+    case "$_fals" in
+      *BAD:FALSIFIED*) sok "case 17 CAN falsify: (b) beating (a) reports FALSIFIED" ;;
+      *) sbad "case 17 cannot report a falsification (got: $(printf '%s' "$_fals" | head -1))" ;;
+    esac
+    case "$_hold" in
+      *OK:one-round*) sok "case 17 can report the premise holding when (a) genuinely wins" ;;
+      *) sbad "case 17 cannot report a hold (got: $(printf '%s' "$_hold" | head -1))" ;;
+    esac
+  fi
+fi
+
 echo
 echo "  $SPASS passed, $SFAIL failed"
 SUITES=$((SUITES + 1)); [ "$SFAIL" -eq 0 ] && SUITES_OK=$((SUITES_OK + 1))

@@ -99,6 +99,15 @@ JS
 
 cd "$FIX" || exit 1
 git diff -W HEAD~1..HEAD > "$WORK/diff.txt"
+
+# Pin the seeded-defect range NOW, by SHA, before any case commits on top of
+# $FIX. Cases 13 and 15 both add commits, so HEAD-relative names do not mean the
+# same thing depending on which cases ran -- and standalone they may not resolve
+# at all. Case 17 used `HEAD~2..HEAD~1`, which needs three commits where the
+# fixture has two: run as `--case 17` it died with "unknown revision", wrote an
+# EMPTY diff, and every arm audited nothing.
+SEED_BASE="$(git rev-parse HEAD~1)"
+SEED_HEAD="$(git rev-parse HEAD)"
 {
   printf 'C1\tAccounts must only be closed after confirmation\n'
   printf 'S1\tincorrect output or silently wrong result\n'
@@ -374,7 +383,14 @@ fi
 if want 17; then
   echo "case 17 — the one-round premise, against its own falsifier"
   cd "$FIX" || exit 1
-  git diff -W HEAD~2..HEAD~1 > "$WORK/diff.txt"     # the diff WITH the seeded defects
+  git diff -W "$SEED_BASE".."$SEED_HEAD" > "$WORK/diff.txt"   # seeded-defect diff, by SHA
+  if ! grep -q '[^[:space:]]' "$WORK/diff.txt" 2>/dev/null; then
+    echo
+    echo "  ABORT — case 17's seeded diff is EMPTY. Every arm would score zero and"
+    echo "  the F1 comparison would be a tie between three nothings. THE FALSIFIER"
+    echo "  MUST NOT REPORT A TIE IT DID NOT EARN."
+    exit 2
+  fi
   K=2
 
   # (a) K parallel, one round
@@ -392,11 +408,26 @@ if want 17; then
   for i in $(seq 1 $K); do audit "$WORK/c$i.json" 2; crits "$WORK/c$i.json" >> "$WORK/c.txt"; done
   sort -u "$WORK/c.txt" > "$WORK/arm-c.txt"
 
-  # Ground truth for this fixture: the seeded defects are the guard removal
-  # (C1) and the destructive purge (S2).
-  printf 'C1\nS2\n' | sort > "$WORK/truth.txt"
+  # Ground truth for this fixture, judged from the CODE and nothing else:
+  #   C1  the confirmation guard was removed.
+  #   S2  db.purge is destructive and irreversible.
+  #   S4  purge runs BEFORE archive, so a failing archive leaves the rows
+  #       already deleted with nothing to roll back to.
+  # S4 was missing, and its absence scored a correct finding as a FALSE
+  # POSITIVE. That penalised whichever arm searched hardest -- arm (b), the one
+  # with an extra audit. Adding it makes falsification EASIER, not harder, so
+  # this correction cannot be read as protecting the premise.
+  printf 'C1\nS2\nS4\n' | sort > "$WORK/truth.txt"
 
-  score() {   # score <arm-file> <label>
+  # score <arm-file> <label> -- prints the row, sets SCORE_F1.
+  #
+  # It used to printf the row AND the f1 to stdout and be called as
+  # `F1A=$(score ...)`, so F1A captured the ENTIRE ROW plus the number. awk then
+  # compared two non-numeric strings, which is a STRING comparison: "(b) ..."
+  # sorts after "(a) ...", so `b>a` was TRUE unconditionally and this case
+  # reported FALSIFIED on every run regardless of what the audits found. A
+  # design would have been revised on the lexical order of two labels.
+  score() {
     local f="$1" label="$2" tp fp fn prec rec f1
     tp=$(comm -12 "$f" "$WORK/truth.txt" | wc -l | tr -d ' ')
     fp=$(comm -23 "$f" "$WORK/truth.txt" | wc -l | tr -d ' ')
@@ -406,15 +437,55 @@ if want 17; then
     f1=$(awk   -v p="$prec" -v r="$rec" 'BEGIN{printf "%.3f", (p+r)?2*p*r/(p+r):0}')
     printf '  %-34s findings=%-3s TP=%-3s FP=%-3s precision=%-6s F1=%s\n' \
            "$label" "$(wc -l < "$f" | tr -d ' ')" "$tp" "$fp" "$prec" "$f1"
-    printf '%s' "$f1"
+    SCORE_F1="$f1"; SCORE_TP="$tp"; SCORE_FP="$fp"
   }
 
-  F1A=$(score "$WORK/arm-a.txt" "(a) K parallel, one round")
-  F1B=$(score "$WORK/arm-b.txt" "(b) + forced second round")
-  F1C=$(score "$WORK/arm-c.txt" "(c) K sequential rounds")
+  score "$WORK/arm-a.txt" "(a) K parallel, one round"; F1A="$SCORE_F1"
+  TPA="$SCORE_TP"; FPA="$SCORE_FP"
+  score "$WORK/arm-b.txt" "(b) + forced second round"; F1B="$SCORE_F1"
+  score "$WORK/arm-c.txt" "(c) K sequential rounds";   F1C="$SCORE_F1"
+  echo "        NOTE: arm (c) is NOT yet distinct from arm (a) — both are K"
+  echo "        independent audits unioned, with no round-to-round chaining."
+  echo "        Its number is reported, but it is not a sequential arm yet."
   echo
 
-  if awk -v a="$F1A" -v b="$F1B" 'BEGIN{exit !(b>a)}'; then
+  # A tie between empty arms is not a corroboration, and a non-numeric F1 is
+  # not a comparison. Refuse both rather than render a verdict either way.
+  _na=$(wc -l < "$WORK/arm-a.txt" | tr -d ' ')
+  _nb=$(wc -l < "$WORK/arm-b.txt" | tr -d ' ')
+  case "$F1A$F1B" in
+    ""|*[!0-9.]*)
+      echo "  UNMEASURED  case 17: F1 did not evaluate to numbers (a='$F1A' b='$F1B')."
+      echo "              No verdict is rendered. THE FALSIFIER MUST NOT GUESS."
+      echo
+      F1A="" ;;
+  esac
+  # A CEILING IS NOT A CORROBORATION.
+  #
+  # Arm (b) is arm (a) plus one extra audit, so b is a superset of a by
+  # construction. If arm (a) already scored every ground-truth criterion with no
+  # false positives, b cannot raise TP and can only add FPs -- `b > a` is
+  # mathematically impossible and the comparison has zero power to falsify.
+  # Observed 2026-09-03: all three arms returned TP=3/3, FP=0, F1=1.000 on a
+  # six-line fixture with three seeded defects. The reviewer saturates this
+  # corpus, so the falsifier cannot run on it. That is a statement about the
+  # corpus, not about the one-round premise.
+  _truthn=$(wc -l < "$WORK/truth.txt" | tr -d ' ')
+  if [ -z "$F1A" ]; then
+    :
+  elif [ "${TPA:-0}" -eq "${_truthn:-0}" ] && [ "${FPA:-0}" -eq 0 ]; then
+    echo "  UNINFORMATIVE  case 17: arm (a) already scored perfectly (TP=$TPA/$_truthn, FP=0)."
+    echo "                 Arm (b) is arm (a) plus one audit, so b ⊇ a: it cannot beat a"
+    echo "                 perfect score, only add false positives. The comparison had NO"
+    echo "                 POWER TO FALSIFY. A ceiling is not a corroboration."
+    echo "                 Harden the corpus before reading anything into (a) >= (b)."
+    echo
+  elif [ "${_na:-0}" -eq 0 ] && [ "${_nb:-0}" -eq 0 ]; then
+    echo "  UNMEASURED  case 17: arms (a) and (b) both returned ZERO findings, so the"
+    echo "              F1 comparison is a tie between two nothings. That is a"
+    echo "              non-execution, not a corroboration of the one-round premise."
+    echo
+  elif awk -v a="$F1A" -v b="$F1B" 'BEGIN{exit !(b>a)}'; then
     bad "FALSIFIED: (b) F1=$F1B beats (a) F1=$F1A. The one-round premise is WRONG for this workload."
     echo "        The design must be REVISED, not defended. See the issue's own falsifier clause."
   else
