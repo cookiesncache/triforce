@@ -252,6 +252,14 @@ if want 13; then
   bcrits "$WORK/s1.json" > "$WORK/blocking-r1.txt"
 
   # Apply a real fix, producing a NEW commit — this is what makes E1 legal.
+  #
+  # The fix must NOT restore the base tree. It used to write back the base
+  # content byte for byte, so `git diff HEAD~2..HEAD` was EMPTY: round 2 audited
+  # nothing, found nothing, and drift=0 held by construction. That is a pass
+  # that could not have failed — the same vacuity that once made case 3
+  # meaningless. So the fix repairs C1 (the confirmation guard returns) and
+  # deliberately LEAVES the destructive purge, which keeps S2 and S4 live and
+  # keeps the round-2 diff non-empty. Drift can then actually be observed.
   cd "$FIX" || exit 1
   cat > src/account.js <<'JS'
 function closeAccount(user, opts) {
@@ -259,11 +267,21 @@ function closeAccount(user, opts) {
     throw new Error('unconfirmed');
   }
   const rows = db.find(user.id);
+  db.purge(rows);
   return archive(rows, opts);
 }
 JS
-  git commit -qam "restore confirmation guard, stop purging" >/dev/null 2>&1
+  git commit -qam "restore confirmation guard" >/dev/null 2>&1
   git diff -W HEAD~2..HEAD > "$WORK/diff.txt"
+
+  # and prove it, every run. An empty round-2 diff measures nothing at all.
+  if ! grep -q '[^[:space:]]' "$WORK/diff.txt" 2>/dev/null; then
+    echo
+    echo "  ABORT — case 13's round-2 diff is EMPTY, so round 2 has nothing to audit."
+    echo "  drift=0 would hold by construction. The fixture's fix has drifted back"
+    echo "  into reproducing the base tree. Fix the fixture, do not report a pass."
+    exit 2
+  fi
 
   audit "$WORK/s2.json" 2
   bcrits "$WORK/s2.json" > "$WORK/blocking-r2.txt"

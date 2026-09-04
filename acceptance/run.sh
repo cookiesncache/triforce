@@ -415,6 +415,33 @@ else
   sbad "live-cases can still read an empty finding set as a clean result ($_lunm guards)"
 fi
 
+# --- case 13's fix must not restore the base tree ----------------------------
+# Case 13 audits round 1 on base..broken, applies a fix, then audits round 2 on
+# base..fixed. Its fix used to write the base content back byte for byte, so the
+# round-2 diff was EMPTY: round 2 audited nothing, returned nothing, and drift=0
+# held by construction. A green that could not have been red -- exactly what
+# made case 3 meaningless before its fixture was repaired. Both bodies are
+# lifted from live-cases.sh, never restated, so a copy here cannot drift into
+# agreement with a broken original.
+_b13="$(sed -n '/^# --- shared fixture/,/^} > "\$WORK\/criteria.tsv"/p' acceptance/live-cases.sh \
+        | awk "/<<'JS'/{n++; if(n==1){c=1; next}} c&&/^JS\$/{exit} c")"
+_f13="$(sed -n '/^# CASE 13/,/^# CASE 15/p' acceptance/live-cases.sh \
+        | awk "/<<'JS'/{c=1; next} c&&/^JS\$/{exit} c")"
+if [ -z "$_b13" ] || [ -z "$_f13" ]; then
+  sbad "could not lift case 13's base and fix bodies from live-cases.sh"
+elif [ "$_b13" = "$_f13" ]; then
+  sbad "case 13's fix reproduces the base tree -- its round-2 diff is empty and drift=0 is vacuous"
+else
+  sok "case 13's fix is a forward change, so round 2 has a non-empty diff to audit"
+fi
+
+# and the case refuses at runtime if that ever regresses.
+if grep -q "case 13's round-2 diff is EMPTY" acceptance/live-cases.sh; then
+  sok "case 13 aborts rather than report drift=0 against an empty diff"
+else
+  sbad "case 13 has no guard against auditing an empty round-2 diff"
+fi
+
 echo
 echo "  $SPASS passed, $SFAIL failed"
 SUITES=$((SUITES + 1)); [ "$SFAIL" -eq 0 ] && SUITES_OK=$((SUITES_OK + 1))

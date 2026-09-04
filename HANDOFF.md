@@ -111,7 +111,9 @@ bash acceptance/probe-harness.sh          # DONE — 7/7 green, PROBE_EXIT=0 (20
                                          #   That is the guard working, not a regression. Re-run.
 bash acceptance/live-cases.sh --case 12   # FAILED — 2026-09-03, on the CORRECTED blocking-only
                                          #   population. S4 leaked. This one is real. Section below.
-bash acceptance/live-cases.sh --case 13   # NOT RUN — fix-and-re-audit, the literal complaint
+bash acceptance/live-cases.sh --case 13   # PASSED — 2026-09-03, drift=0, verifier enum clean.
+                                         #   Its FIRST pass that day was VACUOUS (empty round-2
+                                         #   diff); fixture fixed, this is the real one. n=1.
 bash acceptance/live-cases.sh --case 15   # NOT RUN — floor ablation. Its success condition was
                                          #   literally unreportable until the nviol fix below.
 bash acceptance/live-cases.sh --case 17   # NOT RUN — THE FALSIFIER
@@ -206,6 +208,41 @@ re-run when it happens: the spec
 frames case 12 as a re-run *"on an unchanged diff that returned PASS"*, and the shared fixture
 diff carries seeded defects, so round 1 does not return PASS. The harness is testing the
 stronger property — stability of the finding set on any unchanged diff.
+
+### Case 13 passes — but its first pass that day was vacuous, and that matters
+
+```
+case 13 — fix-and-re-audit (rounds 1..3)
+  ok    round 2 cites no criterion that was not blocking in round 1 (drift=0)
+  ok    verifier emitted a closed-enum status and nothing outside it
+```
+
+**The first run of this on 2026-09-03 printed the identical two lines and meant nothing.** The
+fixture's "fix" wrote the base content back byte for byte, so `git diff HEAD~2..HEAD` was empty
+— round 2 audited nothing, returned nothing, and `drift=0` held by construction. Same tree SHA,
+zero-byte diff. It was a green that could not have been red, exactly like case 3 before its
+fixture was repaired.
+
+The fix now repairs C1 (the confirmation guard returns) and **deliberately leaves the destructive
+purge**, so S2 and S4 stay live and round 2 has 325 bytes of real code to audit. The case aborts
+at runtime if the round-2 diff is ever empty again, and two offline checks in `run.sh` lift the
+base and fix bodies out of this file and compare them, so a restated copy cannot drift into
+agreement with a broken original.
+
+**What the pass does and does not establish.** It is a real measurement: round 2 cited no
+criterion that was not blocking in round 1, and it could have failed. But **n=1, and case 12
+demonstrated that round 1's recall varies on exactly S4.** Had this run's round 1 drawn the
+unlucky sample and missed S4, round 2 would have cited it and drift would have been 1. So the
+result is "drift was 0 on one trial", not "drift is reliably 0". Treat repeat trials as
+characterisation, and declare the protocol before running them.
+
+**The verifier half was always sound** — the closed-enum check tests the verify agent's output
+vocabulary and never depended on the diff being non-empty. That line was a real pass both times.
+
+**Not retained, and it should be.** Neither case keeps its round-1/round-2 gated JSON — `WORK` is
+removed by the `trap` — so which criteria each round actually cited cannot be recovered after the
+fact. That is why case 12's leak can only be characterised by hypothesis. Retaining those two
+files under an opt-in flag is the obvious next harness change.
 
 ### Case 17 deserves special attention
 
@@ -360,10 +397,10 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **105** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **107** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
-  blocking-only population and the counters it rests on), offline, currently green.
-  Keep it green.
+  blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
+  against reproducing the base tree), offline, currently green. Keep it green.
 - Installed as `triforce@cookiesncache-marketplace`, **~694 tokens always-on** (the recorded baseline).
 
 ## Definition of done — current state
@@ -378,9 +415,9 @@ needs production audits to accumulate.
 
 Cases 2–6 are green as of 2026-09-03, and green *meaningfully* for the first time:
 case 3 previously could not have failed. **Case 12 has now failed for real**, on the corrected
-population, leaking S4. Read its section above before touching cases 13, 15 or 17: case 13 runs
-the same drift metric through the same helper and should be expected to show it too, and the
-`nviol()` defect found alongside it made case 15's success condition unreportable.
+population, leaking S4 — and **case 13 passes**, drift=0, on a fixture that can now actually
+show drift. Read both sections above before touching cases 15 or 17. The `nviol()` defect found
+alongside them made case 15's success condition unreportable until 2026-09-03.
 
 **navi and the plan gate remain CUT and DEFERRED.** The CLI now permits their A/Bs, but
 permitting is not measuring, and the issue's decision rule turns on the measurement.
