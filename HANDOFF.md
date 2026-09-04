@@ -102,8 +102,9 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 105 checks green, offline, must stay green
-                                         #   verified at the committed tip, 2026-09-03
+bash acceptance/run.sh                    # DONE — 122 checks green, 5/5 suites, exit 0.
+                                         #   Verified at the committed tip, 2026-09-03.
+                                         #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
 bash acceptance/probe-harness.sh          # DONE — 7/7 green, PROBE_EXIT=0 (2026-09-03)
                                          #   case 6 is dispatch-flaky: 2 of 4 runs came back
