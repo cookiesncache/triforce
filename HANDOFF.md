@@ -173,6 +173,18 @@ run since the fix and its outcome is unknown:
 bash acceptance/live-cases.sh --case 12
 ```
 
+It was attempted immediately after the fix, on 2026-09-03, and could not run:
+
+```
+CANNOT RUN: headless claude is not usable here.
+got: Failed to authenticate: OAuth session expired and could not be refreshed
+```
+
+That is the auth gate doing its job, not a new blocker — the same machine ran
+`probe-harness.sh` live earlier the same day. Re-authenticate an interactive session
+(`/login`) and run it again. **UNMEASURED is not a pass**, and this attempt must not be
+recorded as one.
+
 If a blocking criterion still appears only on the second run, the leak is real and it is the
 schema leaking — say so plainly. The asymmetry is deliberate and correct: the check counts
 criteria present in run 2 and absent from run 1, because a *new* finding on re-audit is precisely
