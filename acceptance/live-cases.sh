@@ -124,7 +124,13 @@ SEED_HEAD="$(git rev-parse HEAD)"
 # changes exactly one thing.
 audit() {
   local out="$1" tier="$2" extra="${3:-}"
-  local prompt raw
+  local prompt raw pre
+  # Each call keeps its OWN pre-gate array, named after its output file. It used
+  # to write every call to the same $WORK/raw.json, so each overwrote the last
+  # and the two arms of an ablation could not be compared before gating. Case 15
+  # could not then distinguish "the floor produced nothing" from "the floor
+  # produced findings the gate removed" -- and those are opposite conclusions.
+  pre="${out%.json}.raw.json"
   prompt="You are ganondorf-t$tier. Audit the diff below against the frozen criteria. Emit the criteria roll-call first, then a JSON array of surviving violations between the markers <<<VIOLATIONS and VIOLATIONS>>>. If nothing survives your gate, emit an empty array.
 $extra
 
@@ -152,10 +158,10 @@ $(cat "$WORK/diff.txt")"
     echo "  Reporting UNMEASURED, not passing."
     exit 2
   fi
-  printf '%s' "$raw" | sed -n '/<<<VIOLATIONS/,/VIOLATIONS>>>/p' | sed '1d;$d' > "$WORK/raw.json"
-  grep -q '[^[:space:]]' "$WORK/raw.json" 2>/dev/null || echo '[]' > "$WORK/raw.json"
+  printf '%s' "$raw" | sed -n '/<<<VIOLATIONS/,/VIOLATIONS>>>/p' | sed '1d;$d' > "$pre"
+  grep -q '[^[:space:]]' "$pre" 2>/dev/null || echo '[]' > "$pre"
   bash "$GATE" --criteria "$WORK/criteria.tsv" --diff "$WORK/diff.txt" \
-       --violations "$WORK/raw.json" --tier "$tier" > "$out" 2>/dev/null
+       --violations "$pre" --tier "$tier" > "$out" 2>/dev/null
 }
 
 # `grep -c` prints 0 AND exits 1 when it matches nothing, so the old
@@ -363,16 +369,29 @@ JS
   audit "$WORK/nofloor.json" 2
   audit "$WORK/floor.json" 2 "Report at least 3 findings."
 
-  nf=$(nviol "$WORK/nofloor.json"); wf=$(nviol "$WORK/floor.json")
+  nf=$(nviol "$WORK/nofloor.json");     wf=$(nviol "$WORK/floor.json")
+  nfp=$(nviol "$WORK/nofloor.raw.json"); wfp=$(nviol "$WORK/floor.raw.json")
+  echo "        post-gate: no-floor=$nf floor=$wf   |   pre-gate: no-floor=$nfp floor=$wfp"
+
   if [ "${nf:-0}" -eq 0 ]; then
     ok "no floor: clean diff returns zero violations"
   else
     bad "no floor: clean diff returned $nf violation(s)"
   fi
+
+  # Post-gate is the right population for CLEAN RATE. It is the wrong population
+  # for the causal claim, because the gate can delete exactly the inventions the
+  # floor provoked. Read both, and name which of the two conclusions holds.
   if [ "${wf:-0}" -gt "${nf:-0}" ]; then
-    ok "ABLATION: reinstating the floor raised the count ($nf -> $wf) — floor removal is the mechanism"
+    ok "ABLATION: reinstating the floor raised the surviving count ($nf -> $wf) — floor removal is the mechanism"
+  elif [ "${wfp:-0}" -gt "${nfp:-0}" ]; then
+    bad "ABLATION, pre-gate only: the floor DID manufacture findings ($nfp -> $wfp pre-gate) and the GATE removed them ($nf -> $wf post-gate)."
+    echo "        That is not an inconclusive result. The floor is harmful and the"
+    echo "        gate is what contains it. Both facts belong in the write-up."
   else
-    bad "ABLATION inconclusive: floor=$wf vs no-floor=$nf. The floor should force findings onto clean code."
+    bad "ABLATION inconclusive: floor=$wf vs no-floor=$nf post-gate, $wfp vs $nfp PRE-gate."
+    echo "        The floor produced nothing to gate away, so floor removal is NOT"
+    echo "        shown to be the mechanism for Cause A on this corpus."
   fi
   echo
 fi

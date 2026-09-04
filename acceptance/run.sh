@@ -569,6 +569,29 @@ else
   fi
 fi
 
+# --- every audit must keep its OWN pre-gate array ----------------------------
+# audit() wrote every call's pre-gate violations to the same $WORK/raw.json, so
+# each call overwrote the last and no two arms could be compared BEFORE gating.
+# That is not a cosmetic loss: it is what stopped case 15 telling "the floor
+# produced nothing" apart from "the floor produced findings and the gate deleted
+# them" -- opposite conclusions about whether the floor is harmful.
+_lc="$(grep -vE '^[[:space:]]*#' acceptance/live-cases.sh)"
+if printf '%s' "$_lc" | grep -qF '"$WORK/raw.json"'; then
+  sbad "audit() still writes every pre-gate array to one shared file"
+else
+  sok "audit() keeps a per-call pre-gate array, so arms can be compared before gating"
+fi
+if printf '%s' "$_lc" | grep -qF 'nofloor.raw.json' && printf '%s' "$_lc" | grep -qF 'floor.raw.json'; then
+  sok "case 15 reads pre-gate as well as post-gate counts"
+else
+  sbad "case 15 still judges the ablation on post-gate counts alone"
+fi
+if printf '%s' "$_lc" | grep -qF 'the GATE removed them'; then
+  sok "case 15 names the floor-harmful-but-gated case instead of calling it inconclusive"
+else
+  sbad "case 15 cannot distinguish a gated-away floor effect from no floor effect"
+fi
+
 echo
 echo "  $SPASS passed, $SFAIL failed"
 SUITES=$((SUITES + 1)); [ "$SFAIL" -eq 0 ] && SUITES_OK=$((SUITES_OK + 1))

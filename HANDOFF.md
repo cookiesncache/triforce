@@ -276,17 +276,38 @@ meaningless:
    this case's own spec says to reinstate "report at least 3 findings". Ablating a softened floor
    cannot show the floor is the mechanism. It is now the literal text.
 
-**The limitation that bounds this result, stated as a limitation and not a rescue:** `nviol`
-counts **post-gate** survivors. If the floor did provoke inventions and the four-check gate then
-dropped them on RING or NOVELTY, the ablation reports 0 and reads as inconclusive while the floor
-is doing exactly what it is accused of. `audit()` writes every call's pre-gate array to the same
-`$WORK/raw.json`, so each overwrites the last and the two arms cannot be compared before gating.
-As measured, **"the floor produced nothing" and "the floor produced findings the gate removed"
-are indistinguishable.**
+#### The instrument was fixed, and the result held
 
-Post-gate is the correct population for *clean rate*, so the metric is not wrong — but it cannot
-carry the causal claim by itself. Per-call pre-gate retention is the instrument fix. Do it, then
-re-measure as a **declared follow-up**, never as a retry of a result someone disliked.
+The first run could not carry its own causal claim: `nviol` counts **post-gate** survivors, and
+`audit()` wrote every call's pre-gate array to the same `$WORK/raw.json`, each overwriting the
+last. So "the floor produced nothing" and "the floor produced findings the gate removed" — which
+are *opposite* conclusions about whether the floor is harmful — were indistinguishable.
+
+`audit()` now keeps a per-call pre-gate array at `${out%.json}.raw.json`, and case 15 reports
+both populations. Re-measured as a declared follow-up on 2026-09-03:
+
+```
+case 15 — floor ablation
+        post-gate: no-floor=0 floor=0   |   pre-gate: no-floor=0 floor=0
+  ok    no floor: clean diff returns zero violations
+  FAIL  ABLATION inconclusive: floor=0 vs no-floor=0 post-gate, 0 vs 0 PRE-gate.
+        The floor produced nothing to gate away, so floor removal is NOT
+        shown to be the mechanism for Cause A on this corpus.
+```
+
+**Pre-gate is 0 for both arms.** The gate was not masking a floor effect — there was no floor
+effect to mask. The earlier reading stands and is now better supported, not overturned: told
+*"Report at least 3 findings."* on a clean diff with no escape hatch, the reviewer returned
+nothing, before gating and after.
+
+The ablation now has three outcomes rather than two, and names which one holds. The middle branch
+— *"the floor DID manufacture findings and the GATE removed them"* — did not fire, and it is the
+one that would have changed the conclusion.
+
+**What remains unshown is the causal claim, not the invariant.** The no-floor rule may still be
+right; this corpus simply does not demonstrate that the floor is what produced Cause A. As with
+case 17, the corpus is the limiting factor — a clean six-line function gives a reviewer almost
+nothing to invent about. Test the floor on a larger clean diff before concluding either way.
 
 ### Case 17 ran — and it could not have falsified anything (2026-09-03)
 
@@ -509,13 +530,13 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **119** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **122** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
   floor text, + 9 guarding the falsifier's ability to falsify, including a three-way
-  test that drives its verdict chain to every outcome), offline, currently green.
-  Keep it green.
+  test that drives its verdict chain to every outcome, + 3 guarding per-call pre-gate
+  retention), offline, currently green. Keep it green.
 - Installed as `triforce@cookiesncache-marketplace`, **~694 tokens always-on** (the recorded baseline).
 
 ## Definition of done — current state
@@ -524,8 +545,8 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 `clean-return rate ≥ 70%` ✅ (91%, 11/12). **Idempotence ❌** — case 12 measured and failed
 (S4 leaked on re-audit of an unchanged diff); a measured negative, not an open item.
 **Fix-and-re-audit drift ✅** — case 13, drift=0 on a fixture that can now show drift, n=1.
-**Floor ablation ⚠️** — case 15 ran and did not confirm the floor is the mechanism
-(floor=0 vs no-floor=0), and the instrument cannot yet see pre-gate.
+**Floor ablation ⚠️** — case 15 ran twice, the second time with pre-gate visibility, and did
+not confirm the floor is the mechanism (0 vs 0 both post- and pre-gate). Not a gating artifact.
 **The one-round premise ⚠️ UNTESTED** — case 17 ran, every arm scored F1=1.000, and arm (b)
 could not beat a perfect arm (a). A ceiling, not a corroboration. The corpus is the blocker.
 
