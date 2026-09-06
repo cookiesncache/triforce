@@ -184,6 +184,33 @@ $(cat "$DIFF_FILE")"
 nviol()  { local n; n=$(grep -c '"criterion_id"' "$1" 2>/dev/null || true); printf '%s' "${n:-0}"; }
 crits()  { grep -oE '"criterion_id": *"[^"]*"' "$1" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' | sort -u; }
 
+# spans <gated.json> -- "criterion_id<TAB>file:line" for every entry.
+#
+# Case 12's FAIL says a criterion appeared only on the second run. That has two
+# readings and the ids alone cannot separate them: the reviewer found something
+# NEW, or it relabelled a defect it had already cited. Measured 2026-09-06 on an
+# S4-only fixture, the reviewer emits ONE criterion per defect and which label
+# it picks varies between runs -- so a relabel is the likelier reading and it is
+# not a schema leak at all. The span is what tells them apart.
+spans() {
+  [ -n "$PY" ] || return 0
+  "$PY" -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+if isinstance(d, dict):
+    for v in d.values():
+        if isinstance(v, list):
+            d = v
+            break
+for v in (d if isinstance(d, list) else []):
+    if isinstance(v, dict):
+        print("%s\t%s:%s" % (v.get("criterion_id", ""), v.get("file", ""), v.get("line", "")))
+' "$1" 2>/dev/null | tr -d '\r'
+}
+
 # Find an interpreter that actually RUNS -- the same probe as gate.sh, for the
 # same reason: on Windows `python3` is often a Store alias stub that exists on
 # PATH and fails on execution.
@@ -261,8 +288,48 @@ if want 12; then
   elif [ "${new:-0}" -eq 0 ]; then
     ok "re-running round 1 on an unchanged diff yields zero NEW blocking criteria (r1=$a r1'=$b, blocking r1=$nblk1, all-severity new=$anynew)"
   else
-    bad "idempotence: $new blocking criterion(s) appeared only on the second run — the schema is leaking"
+    bad "idempotence: $new blocking criterion(s) appeared only on the second run"
     comm -13 "$WORK/blk-r1.txt" "$WORK/blk-r2.txt" | sed 's/^/        /'
+
+    # WHICH KIND OF LEAK. "The schema is leaking" was asserted from the ids
+    # alone, and the ids cannot support it. A criterion new to round 2 is either
+    # a new citation, or the SAME defect relabelled -- and the reviewer was
+    # measured emitting one criterion per defect, with the label varying between
+    # runs. Those are different findings about the design: an unbounded
+    # population versus non-deterministic labelling of a bounded one.
+    spans "$WORK/r1.json"  > "$WORK/sp1.txt"
+    spans "$WORK/r1b.json" > "$WORK/sp2.txt"
+    if ! grep -q '[^[:space:]]' "$WORK/sp2.txt" 2>/dev/null; then
+      echo "        (spans unavailable — cannot say whether this is a relabel or a"
+      echo "        new citation. The FAIL stands; its CHARACTER is unmeasured.)"
+    else
+      _flip=0; _fresh=0
+      while IFS= read -r _id; do
+        [ -n "$_id" ] || continue
+        _loc=$(awk -F'\t' -v i="$_id" '$1==i {print $2; exit}' "$WORK/sp2.txt")
+        _prev=$(awk -F'\t' -v l="$_loc" '$2==l {print $1}' "$WORK/sp1.txt" | sort -u | tr '\n' ' ')
+        if [ -n "$_loc" ] && [ -n "$_prev" ]; then
+          echo "        $_id at $_loc — round 1 already cited that span as [$_prev]."
+          echo "          SAME DEFECT, DIFFERENT LABEL. Not a new finding."
+          _flip=$((_flip + 1))
+        else
+          echo "        $_id at ${_loc:-unknown} — round 1 cited nothing at that span."
+          echo "          A genuinely new citation."
+          _fresh=$((_fresh + 1))
+        fi
+      done < <(comm -13 "$WORK/blk-r1.txt" "$WORK/blk-r2.txt")
+      echo "        character: $_flip relabel(s), $_fresh new citation(s)."
+      if [ "$_fresh" -eq 0 ]; then
+        echo "        Every leaked criterion sits on a span round 1 had ALREADY cited."
+        echo "        The population is bounded and the LABELS are unstable. That is a"
+        echo "        different defect from the one this case was written about, and a"
+        echo "        smaller one — but it is still a FAIL, because a re-audit that"
+        echo "        renames a finding makes the same defect look new to the user."
+      else
+        echo "        At least one leaked criterion cites a span round 1 never touched."
+        echo "        That is the schema leak this case was written to catch."
+      fi
+    fi
   fi
   echo
 fi
@@ -1053,6 +1120,28 @@ JS
   printf '        cited by (a): %s\n' "$(tr '\n' ' ' < "$WORK/arm-a.txt")"
   printf '        cited by (b): %s\n' "$(tr '\n' ' ' < "$WORK/arm-b.txt")"
   printf '        cited by (c): %s\n' "$(tr '\n' ' ' < "$WORK/arm-c.txt")"
+  # NAME THE FALSE POSITIVES. The F1 gaps between arms are driven by precision
+  # once FPs appear, and an id alone does not say whether a citation was really
+  # wrong. Measured 2026-09-06 on django host f30acb18, C1 was cited in 2 of 3
+  # runs and scored FP both times -- but C1 there is the HOST COMMIT'S OWN
+  # SUBJECT, and whether a reviewer citing it is inventing or making a defensible
+  # call about the seeded code cannot be told from "FP=1".
+  #
+  # If those citations are defensible, the truth set is penalising whichever arm
+  # searched hardest, which is the bias this corpus was built to avoid. Printing
+  # the ids is the minimum; a future run should retain the citation text.
+  for _arm in a b c; do
+    comm -23 "$WORK/arm-$_arm.txt" "$WORK/truth.txt" > "$WORK/fp-$_arm.txt"
+  done
+  if grep -q '[^[:space:]]' "$WORK/fp-a.txt" "$WORK/fp-b.txt" "$WORK/fp-c.txt" 2>/dev/null; then
+    printf '        FALSE POSITIVES — (a): %s | (b): %s | (c): %s\n' \
+      "$(tr '\n' ' ' < "$WORK/fp-a.txt")" \
+      "$(tr '\n' ' ' < "$WORK/fp-b.txt")" \
+      "$(tr '\n' ' ' < "$WORK/fp-c.txt")"
+    echo "        These drive the precision term, so they drive the F1 gaps. An id"
+    echo "        alone does not establish a citation was WRONG — check it before"
+    echo "        reading a low-precision arm as an inventing one."
+  fi
   if grep -q '[^[:space:]]' "$WORK/missed.txt" 2>/dev/null; then
     printf '        in truth, reached by NO arm: %s\n' "$(tr '\n' ' ' < "$WORK/missed.txt")"
     echo "        A criterion no arm reached is a SYSTEMATIC blind spot, not a"
@@ -1113,6 +1202,44 @@ JS
     echo "        the extra round bought nothing HERE, not that it never can."
   else
     ok "one-round premise holds on this corpus: (a) F1=$F1A > (b) F1=$F1B"
+  fi
+
+  # THE SEQUENTIAL ARM, WHICH THE ISSUE'S CLAUSE DOES NOT COVER.
+  #
+  # The falsifier clause is written about arm (b): "if (b) beats (a) on F1, the
+  # one-round premise is WRONG for this workload". That is quoted, not
+  # paraphrased, and the chain above implements it unchanged.
+  #
+  # But arm (c) only became a real arm on 2026-09-06. Until then it was
+  # byte-identical to (a), so there was nothing for a (c) comparison to say and
+  # the verdict never made one. Now that (c) genuinely chains, it is ALSO a
+  # multi-round arrangement, and if it beats (a) that is the same class of
+  # evidence against "one round suffices" -- arrived at by a route the clause
+  # happens not to name.
+  #
+  # Measured 2026-09-06, django host 804660d6: (a) and (b) both scored F1=0.857
+  # citing S1 S2 S6, and (c) scored F1=1.000 citing S1 S2 S4 S6. The forced
+  # extra INDEPENDENT round added nothing; the CHAINED round found the defect
+  # both others missed, on the same audit budget as (a) and one fewer than (b).
+  # The chain above printed "the premise holds, as a TIE" and was blind to it.
+  #
+  # Reported as its own finding rather than folded into the clause, because
+  # answering a question the issue did not ask while using the words of the one
+  # it did is the failure mode this file exists to avoid.
+  if [ -n "$F1A" ] && [ -n "${F1C:-}" ] \
+     && ! { [ "${TPA:-0}" -eq "${_truthn:-0}" ] && [ "${FPA:-0}" -eq 0 ]; }; then
+    if awk -v a="$F1A" -v c="$F1C" 'BEGIN{exit !(c>a)}'; then
+      bad "FALSIFIED BY THE SEQUENTIAL ARM: (c) F1=$F1C beats (a) F1=$F1A."
+      echo "        Arm (c) uses the SAME number of audits as (a) and fewer than (b)."
+      echo "        So this is not 'more compute wins' -- it is CHAINING winning."
+      echo "        This is not the issue's literal clause, which names (b), but it is"
+      echo "        the same class of evidence against the one-round premise. If it"
+      echo "        replicates, the design is REVISED, not defended."
+      echo "        cited by (a): $(tr '\n' ' ' < "$WORK/arm-a.txt")"
+      echo "        cited by (c): $(tr '\n' ' ' < "$WORK/arm-c.txt")"
+    else
+      echo "  note  the sequential arm did not beat (a): (c) F1=$F1C vs (a) F1=$F1A."
+    fi
   fi
   echo
 fi

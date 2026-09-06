@@ -102,7 +102,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 161 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 171 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -122,12 +122,12 @@ bash acceptance/live-cases.sh --case 15   # PASSED — 2026-09-06, n=4, on a REA
                                          #   pre-gate == post-gate every time, so THE GATE DOES
                                          #   NOT REMOVE THEM. Cause A confirmed. The earlier
                                          #   "inconclusive" was an untreated arm; see below.
-bash acceptance/live-cases.sh --case 17   # STILL CANNOT RUN — 2026-09-06, n=6 over two
-                                         #   corpora. First a truth-set cap I built in, then a
-                                         #   CEILING: all arms 5/5, FP=0, F1=1.000. The reviewer
-                                         #   saturates hand-seeded fixtures at K=2. A ceiling is
-                                         #   NOT corroboration. Its section names the two routes
-                                         #   out; one of them needs a decision from you.
+bash acceptance/live-cases.sh --case 17   # NOT FALSIFIED — 2026-09-06, n=3 on the django
+                                         #   corpus, 2 hosts. (b) never beat (a): 2 ties, 1 loss.
+                                         #   The ceiling is gone and the clause held. Arm (c) is
+                                         #   INCONSISTENT: 1 win, 1 loss, 1 tie. First false
+                                         #   positives ever measured, and they are UNCHARACTERISED
+                                         #   — read the section before quoting any F1.
 ```
 
 Then, still to be **built**, not just run:
@@ -625,6 +625,52 @@ right; this corpus simply does not demonstrate that the floor is what produced C
 case 17, the corpus is the limiting factor — a clean six-line function gives a reviewer almost
 nothing to invent about. Test the floor on a larger clean diff before concluding either way.
 
+### Case 17 on the django corpus — the premise is NOT falsified (2026-09-06, n=3)
+
+The first corpus on which the comparison had power. Three runs, two hosts:
+
+```
+host       run   (a) F1   (b) F1   (c) F1    cited by (c)
+804660d6    1    0.857    0.857    1.000     S1 S2 S4 S6
+f30acb18    A    0.857    0.750    0.667     C1 S1 S2 S3 S6
+f30acb18    B    0.750    0.750    0.750     C1 S1 S2 S6
+```
+
+**The issue's clause holds, 3 of 3. Arm (b) never beat arm (a)** — two ties and one loss. A forced
+extra *independent* round bought nothing anywhere, and in run A it bought a false positive. On the
+issue's own decision rule the one-round premise stands, and the ceiling that made the previous
+attempts meaningless is gone: arm (a) was imperfect in every run, so (b) had room to win and did
+not.
+
+**Arm (c), the chained arm, is INCONSISTENT — and my first reading of it was wrong.** On the first
+host it found S4, which nothing else reached, and scored 1.000 against 0.857. That single run
+looked like chaining beating parallelism on equal budget. It did not replicate: on the second host
+it *lost* once (0.667 vs 0.857, adding two false positives) and tied once. **One win, one loss, one
+tie is not an effect.** The harness now compares (c) against (a) explicitly, because the verdict
+chain implements the issue's (b)-vs-(a) clause and was structurally blind to the arm that had beaten
+the control — a falsifier that cannot see the winning arm is not a falsifier.
+
+**False positives appeared for the first time anywhere in this measurement**, and they are the most
+interesting result here. In run A the extra rounds bought pure invention: (b) added one FP, (c)
+added two, and neither added a true positive. That is exactly the trade the design predicts — more
+rounds buy invention rather than recall.
+
+**But the false positives are UNCHARACTERISED, and they drive every F1 gap above.** The FP in 2 of 3
+runs was **C1 — the host commit's own subject**. Whether a reviewer citing it is inventing, or
+making a defensible call about how the seeded code interacts with what the commit claims to do,
+cannot be told from `FP=1`. If those citations are defensible, the truth set is penalising whichever
+arm searched hardest, which is the exact bias this corpus was built to avoid. Case 17 now prints the
+FP ids; **a future run should retain the citation text**, and no F1 gap here should be leaned on
+until that is done.
+
+**Arm (d)'s gate condition is now met.** It was deferred because every measured arm scored FP=0 and
+a withdraw-capable round would have had nothing to withdraw. That is no longer true — there are now
+false positives on the table, so arm (d) has become measurable. It is still not built.
+
+**What this does not establish.** n=3, two hosts, K=2, four seeded defects of my own design. The
+defects are mine and idiomatic, so they may be easier than real ones; the noise is real django, so
+it is not. S4 was reached exactly once, by the chained arm, on one host.
+
 ### Case 17: the falsifier still cannot run, and now we know why (2026-09-06)
 
 Three attempts today, three different reasons the comparison had no power. Read all three before
@@ -924,7 +970,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **161** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **171** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its

@@ -769,6 +769,64 @@ else
   else
     sbad "case 17 does not report which criteria the reviewer never reaches"
   fi
+  # Once false positives exist, precision drives the F1 gaps between arms, and
+  # "FP=1" does not say whether the citation was actually wrong. On django host
+  # f30acb18 the FP was C1 -- the host commit's OWN SUBJECT -- in 2 of 3 runs.
+  if printf '%s' "$_l17" | grep -qF 'FALSE POSITIVES'; then
+    sok "case 17 names the false positives, not just how many, so a low-precision arm can be checked"
+  else
+    sbad "case 17 reports FP counts alone -- an inventing arm cannot be told from an unfair truth set"
+  fi
+
+  # ---- the verdict must be able to see the sequential arm ----------------
+  # The falsifier clause names arm (b), and the verdict chain implements it
+  # unchanged. But arm (c) only became a real arm on 2026-09-06 -- until then it
+  # was byte-identical to (a) -- so the chain never compared it, and on the
+  # django host 804660d6 it printed "the premise holds, as a TIE" while (c)
+  # scored F1=1.000 against (a) and (b) at 0.857. A falsifier blind to the arm
+  # that beat the control is not a falsifier.
+  if printf '%s' "$_l17" | grep -qF 'FALSIFIED BY THE SEQUENTIAL ARM'; then
+    sok "case 17's verdict compares the sequential arm against (a), not only (b)"
+  else
+    sbad "case 17's verdict cannot report a sequential arm beating (a) -- it is blind to arm (c)"
+  fi
+  if printf '%s' "$_s17" | grep -qF 'not the issue'"'"'s literal clause'; then
+    sok "the sequential finding is reported as distinct from the issue's own (b)-vs-(a) clause"
+  else
+    sbad "case 17 folds a sequential-arm result into the issue's clause, answering a question it did not ask"
+  fi
+  # and the block itself, LIFTED AND RUN. A comparison that cannot fire is the
+  # same as no comparison, and this one is new enough to be unexercised.
+  _vseq="$(printf '%s' "$_s17" | sed -n '/^  if \[ -n "\$F1A" \] && \[ -n "\${F1C:-}" \]/,/^  fi$/p')"
+  if [ -z "$_vseq" ]; then
+    sbad "could not lift case 17's sequential-arm comparison"
+  else
+    _vsd="$(mktemp -d)"
+    printf 'S1\nS2\nS6\n'    > "$_vsd/arm-a.txt"
+    printf 'S1\nS2\nS4\nS6\n' > "$_vsd/arm-c.txt"
+    _seqfire() {   # <F1A> <F1C> <TPA> <FPA> <truthn>
+      WORK="$_vsd"; F1A="$1"; F1C="$2"; TPA="$3"; FPA="$4"; _truthn="$5"
+      ok()  { printf 'OK:%s\n'  "$1"; }
+      bad() { printf 'BAD:%s\n' "$1"; }
+      eval "$_vseq"
+    }
+    _sfals=$(_seqfire 0.857 1.000 3 0 4 2>&1)
+    _shold=$(_seqfire 0.900 0.500 3 0 4 2>&1)
+    _sceil=$(_seqfire 1.000 1.000 4 0 4 2>&1)
+    case "$_sfals" in
+      *BAD:FALSIFIED*) sok "the sequential comparison FIRES when (c) beats (a) — the case 17 django shape" ;;
+      *) sbad "the sequential comparison cannot report (c) beating (a) (got: $(printf '%s' "$_sfals" | head -1))" ;;
+    esac
+    case "$_shold" in
+      *BAD:*) sbad "the sequential comparison falsifies when (c) LOSES to (a)" ;;
+      *) sok "the sequential comparison stays quiet when (c) does not beat (a)" ;;
+    esac
+    case "$_sceil" in
+      *BAD:*) sbad "the sequential comparison fires at a ceiling, where (c) cannot beat a perfect (a)" ;;
+      *) sok "the sequential comparison is suppressed at a ceiling, like the (b) comparison" ;;
+    esac
+    rm -rf "$_vsd"
+  fi
 
   # ---- arm (c) must actually be sequential -------------------------------
   # It was byte-identical to arm (a) -- K independent audits unioned, no
@@ -959,6 +1017,57 @@ else
     fi
     rm -rf "$_hd"
   fi
+fi
+
+# --- case 12 must say WHAT KIND of leak it found ----------------------------
+# Case 12's FAIL read "the schema is leaking", asserted from criterion ids
+# alone. The ids cannot support that. A criterion new to round 2 is either a new
+# citation or the SAME defect relabelled, and the reviewer was measured emitting
+# one criterion per defect with the label varying between runs -- so a relabel
+# is the likelier reading and it is a different, smaller finding: a bounded
+# population with unstable labels, not an unbounded one.
+_c12="$(sed -n '/^# CASE 12/,/^# CASE 13/p' acceptance/live-cases.sh)"
+_c12l="$(printf '%s' "$_c12" | grep -vE '^[[:space:]]*#')"
+if [ -z "$_c12" ]; then
+  sbad "could not lift case 12 from live-cases.sh"
+else
+  if printf '%s' "$_c12l" | grep -qF 'SAME DEFECT, DIFFERENT LABEL'; then
+    sok "case 12 separates a relabelled defect from a genuinely new citation, by span"
+  else
+    sbad "case 12 calls any new criterion a schema leak, which the ids alone cannot establish"
+  fi
+  # A relabel is still a FAIL: a re-audit that renames a finding makes the same
+  # defect look new to the user. The characterisation must not become an excuse.
+  if printf '%s' "$_c12l" | grep -qF 'bad "idempotence:'; then
+    sok "case 12 still FAILS on a leak of either kind, rather than explaining one away"
+  else
+    sbad "case 12 no longer fails on a leaked criterion"
+  fi
+  # And when spans cannot be read, it must say the character is unmeasured
+  # rather than defaulting to the flattering reading. INVARIANT 10 again.
+  if printf '%s' "$_c12l" | grep -qF 'its CHARACTER is unmeasured'; then
+    sok "case 12 reports the leak's character as unmeasured when spans are unavailable"
+  else
+    sbad "case 12 would guess at a leak's character when it cannot read the spans"
+  fi
+fi
+# spans() must return NOTHING rather than a wrong answer on unparseable input --
+# a fabricated span would send the reader to the wrong conclusion with
+# confidence. Lifted and run against garbage.
+_sp="$(sed -n '/^spans() {/,/^}$/p' acceptance/live-cases.sh)"
+if [ -z "$_sp" ]; then
+  sbad "could not lift spans() from live-cases.sh"
+else
+  _spd="$(mktemp -d)"
+  printf 'not json at all\n' > "$_spd/bad.json"
+  printf '[{"criterion_id":"S2","file":"a.js","line":7}]\n' > "$_spd/good.json"
+  _spout=$( PY="python"; eval "$_sp"; printf 'BAD[%s] GOOD[%s]' \
+            "$(spans "$_spd/bad.json" | tr '\n' ' ')" "$(spans "$_spd/good.json" | tr -d '\t' | tr '\n' ' ')" )
+  case "$_spout" in
+    "BAD[] GOOD[S2a.js:7 ]") sok "spans() reads real entries and returns nothing on unparseable input" ;;
+    *) sbad "spans() misbehaves on the round trip (got: $_spout)" ;;
+  esac
+  rm -rf "$_spd"
 fi
 
 # --- every audit must keep its OWN pre-gate array ----------------------------
