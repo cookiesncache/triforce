@@ -23,6 +23,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=acceptance/headless.sh
+. "$ROOT/acceptance/headless.sh"
 CORPUS_REPO="$ROOT"
 N=20
 
@@ -127,8 +129,8 @@ $(cat "$WORK/criteria.tsv")
 MERGED DIFF (git diff -W):
 $(cat "$WORK/diff.txt")"
 
-  raw=$(printf '%s' "$prompt" | timeout 600 claude -p --plugin-dir "$ROOT" \
-          --agent "$agent" --allowedTools "" 2>/dev/null)
+  raw=$(printf '%s' "$prompt" | hl_claude --plugin-dir "$ROOT" \
+          --agent "$agent" --allowedTools "")
 
   # Extraction MUST be range-oriented. The violations array spans many lines;
   # a line-oriented `sed -n 's/.*<<<VIOLATIONS//p'` captures only the remainder
@@ -137,8 +139,7 @@ $(cat "$WORK/diff.txt")"
   # made this harness report 100% unconditionally.
   if printf '%s' "$raw" | grep -q '<<<VIOLATIONS' \
      && printf '%s' "$raw" | grep -q 'VIOLATIONS>>>'; then
-    printf '%s' "$raw" | sed -n '/<<<VIOLATIONS/,/VIOLATIONS>>>/p' | sed '1d;$d' \
-      > "$WORK/viol.json" 2>/dev/null
+    printf '%s' "$raw" | hl_first_block > "$WORK/viol.json" 2>/dev/null
     grep -q '[^[:space:]]' "$WORK/viol.json" 2>/dev/null || echo '[]' > "$WORK/viol.json"
 
     gated=$(bash "$ROOT/skills/triforce/scripts/gate.sh" \

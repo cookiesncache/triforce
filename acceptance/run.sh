@@ -196,14 +196,70 @@ fi
 # audit into a PASS. That defect made clean-corpus.sh report 100% regardless of
 # what any auditor found. These checks are offline on purpose: they exercise the
 # idiom itself, so the class cannot regress without a live model to notice it.
+# shellcheck source=acceptance/headless.sh
+. acceptance/headless.sh
 _xtr="$(mktemp)"
 printf 'roll-call\n<<<VIOLATIONS\n[\n  {"criterion_id": "S3", "severity": "blocking"}\n]\nVIOLATIONS>>>\nCOMPLETE\n' > "$_xtr"
-_got=$(sed -n '/<<<VIOLATIONS/,/VIOLATIONS>>>/p' "$_xtr" | sed '1d;$d' | grep -c '"criterion_id"')
+_got=$(hl_first_block < "$_xtr" | grep -c '"criterion_id"')
 if [ "${_got:-0}" -eq 1 ]; then
   sok "extraction recovers a MULTI-LINE violations array (the 100% bug)"
 else
   sbad "extraction lost a multi-line violations array — every audit becomes a false PASS"
 fi
+
+# --- THE STOP-HOOK TRANSPORT DEFECT, REPRODUCED OFFLINE ----------------------
+# `claude -p` in text mode prints only the FINAL assistant message. This plugin
+# ships a Stop hook, and --plugin-dir loads it into every headless audit, so the
+# reviewer emits its violations block, the hook fires, and the reviewer writes a
+# SECOND message answering it -- which is all text mode hands back. The audit is
+# produced correctly and thrown away by the transport.
+#
+# That silently destroyed measurements: probe-harness case 6's "2 of 4 runs",
+# case 13's first run, and clean-corpus's two UNREVIEWABLE rows recorded as
+# "transient infrastructure failures" that "reproduce clean in isolation".
+# Reproduced here from a synthetic transcript so it cannot regress unnoticed.
+_sjf="$(mktemp)"
+# A quoted heredoc, not printf: printf would interpret the JSON's own \n and \"
+# escapes and split each record across lines, leaving nothing parseable.
+cat > "$_sjf" <<'SJ'
+{"type":"system","subtype":"init"}
+{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"..."}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"roll-call\n<<<VIOLATIONS\n[\n  {\"criterion_id\": \"S2\"}\n]\nVIOLATIONS>>>\nCOMPLETE"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"Audit already terminated; I will not re-open it."}]}}
+{"type":"result","result":"Audit already terminated; I will not re-open it."}
+SJ
+_txt=$(hl_transcript < "$_sjf")
+if printf '%s' "$_txt" | grep -q '<<<VIOLATIONS'; then
+  sok "hl_transcript recovers the audit from a hook-extended transcript, not just the last message"
+else
+  sbad "the transport still reads only the final message — a Stop hook reply discards the audit"
+fi
+_ids=$(printf '%s' "$_txt" | hl_first_block | grep -c '"criterion_id"')
+if [ "${_ids:-0}" -eq 1 ]; then
+  sok "hl_first_block extracts the audit array out of a multi-message transcript"
+else
+  sbad "hl_first_block lost the array in a multi-message transcript (got $_ids)"
+fi
+rm -f "$_sjf"
+
+# Two blocks must not be spliced: a hook exchange can make the reviewer restate
+# its array, and a range match across both yields one malformed document.
+_two=$(printf 'a\n<<<VIOLATIONS\n[{"criterion_id": "S1"}]\nVIOLATIONS>>>\nb\n<<<VIOLATIONS\n[{"criterion_id": "S9"}]\nVIOLATIONS>>>\n' | hl_first_block | tr -d ' \n')
+if [ "$_two" = '[{"criterion_id":"S1"}]' ]; then
+  sok "hl_first_block takes the FIRST array only, never splices two"
+else
+  sbad "hl_first_block spliced or mis-extracted a restated array (got '$_two')"
+fi
+
+# and no harness may go back to text mode, which is where the audit gets lost.
+for _h in acceptance/clean-corpus.sh acceptance/live-cases.sh acceptance/probe-harness.sh; do
+  if grep -vE '^[[:space:]]*#' "$_h" | grep -qE 'claude -p' \
+     && ! grep -vE '^[[:space:]]*#' "$_h" | grep -qE 'claude -p "Reply with exactly: READY"'; then
+    sbad "$(basename "$_h") calls claude -p directly; a Stop hook reply would discard its result"
+  else
+    sok "$(basename "$_h") goes through the shared transport, not bare claude -p"
+  fi
+done
 
 # and neither harness may still carry the line-oriented idiom in LIVE CODE.
 # Comment lines are stripped first: both harnesses quote the old idiom verbatim

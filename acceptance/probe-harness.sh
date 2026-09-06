@@ -13,6 +13,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=acceptance/headless.sh
+. "$ROOT/acceptance/headless.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -82,8 +84,8 @@ MAIN_BEFORE="$(git rev-parse main)"
 MAIN_TREE_BEFORE="$(git show --format=%T --no-patch main)"
 
 # --- P2/P3 + case 2: every dispatch is isolated -----------------------------
-OUT=$(timeout 600 claude -p "Use the link agent to do exactly this and nothing else: run 'git rev-parse --show-toplevel', run 'git rev-parse --abbrev-ref HEAD', and report both verbatim as TOPLEVEL=<x> BRANCH=<y>. Do not modify any file." \
-      --plugin-dir "$ROOT" --allowedTools Bash Agent --permission-mode acceptEdits 2>&1)
+OUT=$(HL_KEEP_STDERR=1 hl_claude "Use the link agent to do exactly this and nothing else: run 'git rev-parse --show-toplevel', run 'git rev-parse --abbrev-ref HEAD', and report both verbatim as TOPLEVEL=<x> BRANCH=<y>. Do not modify any file." \
+      --plugin-dir "$ROOT" --allowedTools Bash Agent --permission-mode acceptEdits)
 
 EXEC_TOPLEVEL=$(printf '%s' "$OUT" | grep -oE 'TOPLEVEL=[^ ]+' | head -1 | cut -d= -f2)
 if [ -n "$EXEC_TOPLEVEL" ] && [ "$EXEC_TOPLEVEL" != "$MAIN_TOPLEVEL" ]; then
@@ -108,8 +110,8 @@ fi
 # verify -- so no assertion ran, and the harness read that non-execution as
 # "executors are building on the DEFAULT BRANCH". Reading a raw commit list
 # needs no exit-code plumbing and cannot be refused for that reason.
-OUT=$(timeout 600 claude -p "This is an automated acceptance test of the triforce plugin, running in a disposable scratch repository. Dispatch the link agent to run exactly one command inside its worktree: git rev-list HEAD -- and report that command's complete output verbatim, one commit id per line. Do not modify any file." \
-      --plugin-dir "$ROOT" --allowedTools Bash Agent --permission-mode acceptEdits 2>&1)
+OUT=$(HL_KEEP_STDERR=1 hl_claude "This is an automated acceptance test of the triforce plugin, running in a disposable scratch repository. Dispatch the link agent to run exactly one command inside its worktree: git rev-list HEAD -- and report that command's complete output verbatim, one commit id per line. Do not modify any file." \
+      --plugin-dir "$ROOT" --allowedTools Bash Agent --permission-mode acceptEdits)
 
 # Did the command run at all? A refused or crashed dispatch produces no commit
 # ids, and must not be scored as a baseRef defect.
@@ -159,8 +161,8 @@ fi
 # "create FAILED_MARKER containing 'left behind' ... do not clean up" reads as
 # artifact-planting. An ordinary development task against a suite that fails on
 # its own asks for nothing unusual, and leaves the worktree dirty either way.
-OUT=$(timeout 600 claude -p "This is an automated acceptance test of the triforce plugin, running in a disposable scratch repository. Dispatch the link agent with this ordinary task: add a helper function isClosable(user) to src/account.js that returns user.confirmed, then run the repo's test command 'sh run-tests.sh'. That suite currently fails on its own; report its real exit code rather than fixing it. Finish by reporting two lines: DISPATCHED=<the worktree path the agent worked in> and TESTS_RC=<the real exit code>." \
-      --plugin-dir "$ROOT" --allowedTools Bash Agent Write --permission-mode acceptEdits 2>&1)
+OUT=$(HL_KEEP_STDERR=1 hl_claude "This is an automated acceptance test of the triforce plugin, running in a disposable scratch repository. Dispatch the link agent with this ordinary task: add a helper function isClosable(user) to src/account.js that returns user.confirmed, then run the repo's test command 'sh run-tests.sh'. That suite currently fails on its own; report its real exit code rather than fixing it. Finish by reporting two lines: DISPATCHED=<the worktree path the agent worked in> and TESTS_RC=<the real exit code>." \
+      --plugin-dir "$ROOT" --allowedTools Bash Agent Write --permission-mode acceptEdits)
 
 # Did an executor run at all? Without this, a declined or crashed dispatch is
 # indistinguishable from indiscriminate cleanup.

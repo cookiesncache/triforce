@@ -33,6 +33,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=acceptance/headless.sh
+. "$ROOT/acceptance/headless.sh"
 GATE="$ROOT/skills/triforce/scripts/gate.sh"
 LEDGER="$ROOT/skills/triforce/scripts/ledger.sh"
 ONLY=""
@@ -139,8 +141,8 @@ $(cat "$WORK/criteria.tsv")
 
 MERGED DIFF (git diff -W):
 $(cat "$WORK/diff.txt")"
-  raw=$(printf '%s' "$prompt" | timeout 600 claude -p --plugin-dir "$ROOT" \
-          --agent "ganondorf-t$tier" --allowedTools "" 2>/dev/null)
+  raw=$(printf '%s' "$prompt" | hl_claude --plugin-dir "$ROOT" \
+          --agent "ganondorf-t$tier" --allowedTools "")
   # Extraction MUST be range-oriented — see the note in clean-corpus.sh. A
   # line-oriented `sed -n 's/.*<<<VIOLATIONS//p'` captures only the remainder of
   # the marker's own line, so every multi-line violations array was discarded
@@ -158,7 +160,7 @@ $(cat "$WORK/diff.txt")"
     echo "  Reporting UNMEASURED, not passing."
     exit 2
   fi
-  printf '%s' "$raw" | sed -n '/<<<VIOLATIONS/,/VIOLATIONS>>>/p' | sed '1d;$d' > "$pre"
+  printf '%s' "$raw" | hl_first_block > "$pre"
   grep -q '[^[:space:]]' "$pre" 2>/dev/null || echo '[]' > "$pre"
   bash "$GATE" --criteria "$WORK/criteria.tsv" --diff "$WORK/diff.txt" \
        --violations "$pre" --tier "$tier" > "$out" 2>/dev/null
@@ -319,7 +321,7 @@ JS
   vid=$(bash "$LEDGER" vid C1 "db.purge(rows);")
   vout=$(printf 'violation_id: %s\ncriterion: C1 "Accounts must only be closed after confirmation"\noriginal evidence quote: "db.purge(rows);"\ncurrent span:\n%s\n' \
           "$vid" "$(sed -n '1,8p' src/account.js)" \
-        | timeout 300 claude -p --plugin-dir "$ROOT" --agent verifier --allowedTools "" 2>/dev/null)
+        | HL_TIMEOUT=300 hl_claude --plugin-dir "$ROOT" --agent verifier --allowedTools "")
   stray=$(printf '%s' "$vout" | grep -oE '\b(VIOLATED|PASS|FAIL|BLOCKING|finding|findings|nit)\b' | wc -l | tr -d ' ')
   if [ "${stray:-0}" -eq 0 ] && printf '%s' "$vout" | grep -qE 'RESOLVED|UNRESOLVED|RELOCATION_FAILED'; then
     ok "verifier emitted a closed-enum status and nothing outside it"

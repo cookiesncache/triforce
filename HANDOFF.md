@@ -102,14 +102,15 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 122 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 128 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-03.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
-bash acceptance/probe-harness.sh          # DONE — 7/7 green, PROBE_EXIT=0 (2026-09-03)
-                                         #   case 6 is dispatch-flaky: 2 of 4 runs came back
-                                         #   UNMEASURED because the model declined the prompt.
-                                         #   That is the guard working, not a regression. Re-run.
+bash acceptance/probe-harness.sh          # 6/7 + 1 UNMEASURED, PROBE_EXIT=0 (2026-09-06)
+                                         #   Case 6 has now failed for THREE different stated
+                                         #   reasons across runs. Latest: link reported its
+                                         #   worktree was "not a real git worktree". Read the
+                                         #   transport section AND the case 6 lead below.
 bash acceptance/live-cases.sh --case 12   # FAILED — 2026-09-03, on the CORRECTED blocking-only
                                          #   population. S4 leaked. This one is real. Section below.
 bash acceptance/live-cases.sh --case 13   # PASSED — 2026-09-03, drift=0, verifier enum clean.
@@ -132,6 +133,93 @@ Then, still to be **built**, not just run:
 3. **Setup-from-a-clean-machine** verification, following only the README.
 4. **Case 16**, effective false positives over rolling windows — genuinely cannot be done yet; it
    needs production audits to accumulate.
+
+### THE HEADLESS TRANSPORT WAS DISCARDING AUDITS (found and fixed 2026-09-06)
+
+**This plugin's own Stop hook was corrupting this plugin's own measurements.**
+
+`claude -p` in text mode prints only the FINAL assistant message. `hooks/hooks.json` ships a
+`Stop` hook, and `--plugin-dir "$ROOT"` loads it into **every headless audit the harnesses run**.
+So the reviewer emitted its roll-call and its `<<<VIOLATIONS ... VIOLATIONS>>>` block, tried to
+end its turn, the plugin's own Stop hook fired *inside that headless session*, and the reviewer
+wrote a SECOND message answering it. Text mode handed back that reply and threw the audit away.
+
+The marker-less replies name the hook in its own vocabulary, which appears nowhere else:
+
+```
+Audit already terminated; I will not re-open it.
+Nothing in the hook feedback changes the artifact.
+... no triforce merge, no executor work integrated, so no audit-record obligation applies here.
+```
+
+Measured, text mode vs `stream-json`, same prompt and fixture:
+
+```
+text mode:    3 calls -> 1 usable, 2 markerless   (and separately 2 of 3, and 3 of 3)
+stream-json:  3 calls -> 3 usable, valid JSON, criterion ids recovered
+```
+
+One run went **four assistant messages deep**. The artifact was never lost; the transport
+discarded it.
+
+**The fix is transport-only.** `acceptance/headless.sh` is now the single place every harness
+talks to the model: `hl_claude` asks for `stream-json` and returns the whole transcript,
+`hl_transcript` decodes the assistant text, and `hl_first_block` takes the FIRST violations array
+-- a hook exchange can make the reviewer restate it, and a range match across both splices two
+arrays into one malformed document. Nothing about the hook, the plugin, the reviewer prompt or
+the gate changes, so **this fix is structurally incapable of flattering a result. It can only
+stop one being thrown away.** That property matters, because the correction runs in the design's
+favour.
+
+`hl_transcript` refuses rather than returning an empty string when it cannot parse: silence there
+would read downstream as "the reviewer found nothing". INVARIANT 10 again.
+
+Six offline checks cover it, including a synthetic hook-extended transcript, so the class cannot
+regress without a live model to notice.
+
+**What this explains, and what it does not.** Established: the mechanism is real, reproduced
+offline, and demonstrably destroyed measurements. **Not established:** that it caused any
+*specific* historical failure. Two candidates, to be judged on evidence rather than on how neatly
+the story fits --
+
+- `clean-corpus.sh`'s two `UNREVIEWABLE` rows (`1d50f129`, `febefb17`), recorded below as
+  "transient infrastructure failures" that "reproduce clean in isolation". The signature matches
+  exactly: markers absent in a batch, present on isolated re-run, non-deterministic.
+- probe-harness case 6's "2 of 4 runs". **This one is now doubtful** -- a post-fix run failed
+  again, for a different reason. See the lead below.
+
+**The headline metric is a floor, not a ceiling.** `clean-corpus.sh` counts `UNREVIEWABLE`
+against the rate (only `PASS` increments the numerator, while every audited row increments the
+denominator). A discarded audit therefore read as a non-clean row: **91% (11/12) understates
+rather than inflates.** Re-measured on the fixed transport; the result is recorded with it. Do
+NOT adjust the recorded number by argument -- a 100% figure was already retracted once as an
+artifact, and reasoning a better one back into existence is that same mistake in a new hat.
+
+### Case 6 lead: link reported its own isolation had failed (2026-09-06, OPEN)
+
+```
+DISPATCHED=...worktrees/agent-a0f4857ec3974d5a9 (not a real git worktree — isolation failed)
+TESTS_RC=not obtained — link correctly refused to run tests without genuine isolation
+```
+
+Case 6 is UNMEASURED again, and **the transport fix did not resolve it** -- so the "2 of 4"
+flakiness was not simply the Stop hook. Case 6 has now failed for three distinct stated reasons
+across sessions: the model declined a fabricated result; the model declined an artifact-planting
+framing; and now this.
+
+Read it carefully before alarm:
+
+- Cases 2-5 measure isolation **directly** and all passed in the SAME run, including the worktree
+  path and a clean teardown.
+- Case 6 is the only dispatch carrying `--allowedTools Bash Agent Write` and
+  `--permission-mode acceptEdits` -- the only **write** task. Cases 2-3 are read-only.
+- The safety property HELD. link detected the problem and **refused to run** rather than writing
+  into the main checkout. That is the executor behaving correctly.
+
+So the likely reading is that worktree *setup* failed for that one dispatch, not that isolation
+is broken. But that is a hypothesis about an agent's **self-report, which is data and not ground
+truth**, and it is unresolved. Case 6's retention check cannot be measured until a write dispatch
+gets a real worktree. Investigate before trusting a case 6 result in either direction.
 
 ### Case 12's FAIL is VOID — it counted the wrong population (harness fixed 2026-09-03)
 
@@ -531,13 +619,14 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **122** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **128** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
   floor text, + 9 guarding the falsifier's ability to falsify, including a three-way
   test that drives its verdict chain to every outcome, + 3 guarding per-call pre-gate
-  retention), offline, currently green. Keep it green.
+  retention, + 6 guarding the headless transport against the Stop-hook defect),
+  offline, currently green. Keep it green.
 - Installed as `triforce@cookiesncache-marketplace`, **~694 tokens always-on** (the recorded baseline).
 
 ## Definition of done — current state
