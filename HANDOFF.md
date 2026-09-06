@@ -102,7 +102,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 153 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 161 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -382,6 +382,71 @@ would read as treated while still being a control. Two hunks, both verified befo
 changed nothing, because the arm was never treated. Keep that in view when reading any future
 tie: this case has now produced an uninformative tie twice, for two different reasons, and neither
 was about finding floors.
+
+### Arm (c) is sequential now, and arm (d) is named rather than built (2026-09-06)
+
+**Decided with the user, not invented.** Arm (c) had been byte-identical to arm (a) — K independent
+audits unioned — and the previous session logged that as owed work rather than guess the semantics.
+
+**Arm (c) = chaining.** Round n+1 is told which criteria round n cited and asked to look for what
+it missed. That is the plain reading of "K sequential", and it isolates ONE variable.
+
+**The empty-array escape in that prompt is load-bearing.** "Report only what the previous reviewer
+missed" is one careless sentence from a finding floor; INVARIANT 1 forbids a floor *in any prompt*,
+and case 15 has now measured a floor manufacturing false positives on a genuinely clean diff. The
+instruction states that missing nothing is a complete and correct answer.
+
+**Arm (d) — a round that may WITHDRAW an earlier finding — is deliberately not built.** It was
+considered and declined for now on four grounds:
+
+- It changes **authority as well as chaining**, so beating arm (a) would not say which caused it.
+  Arm (c) isolates chaining; arm (d) belongs beside it, not inside it.
+- "K sequential" in the issue means sequential rounds, not a revision pass. Building it as arm (c)
+  would answer a question the issue did not ask while looking like it answered the one it did.
+- A reviewer that deletes its own findings is a second, model-driven deletion path beside the gate,
+  and "withdrew a finding" is indistinguishable from "crashed mid-revision and emitted a shorter
+  array". That is a fresh way to manufacture a false clean and would need its own guard.
+- **Decisively: there is nothing to withdraw.** FP=0 in every arm of every run so far. Its only
+  distinct mechanism is removing false positives, and none have ever appeared.
+
+It is **gated on a corpus that produces false positives**, and it is named in case 17's own output
+so its absence reads as a decision rather than an oversight.
+
+### The django-seeded corpus for case 17 (2026-09-06)
+
+The hand-built fixture is saturated — 5/5, FP=0, three runs — so it cannot falsify anything. This
+corpus keeps ground truth knowable while making the search realistic:
+
+- **base** = a real django commit's parent state, **head** = that commit **plus** seeded defects.
+  django's own changes become the noise a single round has to search through.
+- Four seeded defects, idiomatic django antipatterns, one per criterion: **S1** an off-by-one that
+  drops the first element, **S2** an unconditional `.all().delete()`, **S4** two `.save()` calls
+  with no transaction, **S6** a read-modify-write on a counter.
+- Truth is **the seeded defects only**. C1 is the host commit's own subject, which the host
+  satisfies, so **C1, S3 and S5 are clean** and citing any of them is a real false positive.
+- Opt-in: `--corpus django --repo <clone> --host <sha>`. The self-contained fixture stays the
+  default so a bare `--case 17` still runs with no external repo, and a missing clone or host is
+  **UNMEASURED**, never a silent fall back to the easy corpus.
+
+**THE HOST MUST BE A COMMIT THE REVIEWER RETURNS CLEAN ON, UNSEEDED.** Otherwise its own legitimate
+findings score as false positives against a truth set that only knows the seeded defects, which
+penalises whichever arm searched hardest — the same bias that adding S4 removed from the hand
+fixture. Four candidates were measured before any was used; **all four came back clean**, and the
+two large enough to use are:
+
+```
+f30acb18  Fixed #12090 -- Added admin actions to the admin change form.       308 lines, 5 files
+804660d6  Refs #28800 -- Lifted some url functions from admindocs into urls.  272 lines, 3 files
+```
+
+Those baselines were audited over ALL the commit's `.py` files including tests, while case 17 uses
+library files only — a superset drew no findings, so the subset is conservative.
+
+**One bug was caught before it produced a number.** The seeding cycled over FILES, one defect each.
+On a two-file host that seeded two defects while the truth claimed four, so two criteria were
+unreachable and recall was capped at 2/4 **by the fixture** — and it would have looked exactly like
+the reviewer missing things. It now iterates over the defects and cycles files. The first django
+run was killed rather than reported.
 
 ### Case 12's FAIL is VOID — it counted the wrong population (harness fixed 2026-09-03)
 
@@ -859,7 +924,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **153** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **161** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
