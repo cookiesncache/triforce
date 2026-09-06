@@ -556,6 +556,70 @@ fi
 # verbatim to record why it was replaced, and that documentation must not trip
 # the check below -- the same trap the extraction and ANCESTOR checks fell into.
 _c15="$(sed -n '/^# CASE 15/,/^# CASE 17/p' acceptance/live-cases.sh | grep -vE '^[[:space:]]*#')"
+
+# ---- THE ABLATION MUST APPLY ITS TREATMENT -------------------------------
+# Case 15 reported floor=0 vs no-floor=0 twice, on corpora eight times apart in
+# size. The floor arm produced ZERO findings PRE-GATE both times: the reviewer
+# did not invent findings and have them gated away, it refused the floor. Its
+# own contract, loaded by --agent/--plugin-dir into every audit, forbids floors
+# in four places, and a line appended to the USER prompt does not outrank it.
+# So the arm was never treated, and a tie between two untreated arms says
+# nothing about finding floors. These checks are about whether the treatment
+# reaches the reviewer at all.
+_c15full="$(sed -n '/^# CASE 15/,/^# CASE 17/p' acceptance/live-cases.sh)"
+if printf '%s' "$_c15" | grep -qF 'audit "$WORK/floor.json" 2 "Report at least 3 findings."'; then
+  sbad "case 15 still ablates by appending a floor to the prompt, which the agent contract overrides"
+else
+  sok "case 15 does not try to install a floor the reviewer's own contract forbids"
+fi
+if printf '%s' "$_c15" | grep -qF 'AUDIT_PLUGIN_DIR="$FLOOR_DIR"'; then
+  sok "case 15's floor arm loads a patched contract, so the treatment sits where the instruction lives"
+else
+  sbad "case 15's two arms load the same contract -- there is no treatment to measure"
+fi
+if printf '%s' "$_c15" | grep -qF 'ABORT — case 15'"'"'s ablation did not apply'; then
+  sok "case 15 aborts rather than report a tie between two untreated arms"
+else
+  sbad "case 15 can report an unapplied treatment as a null result"
+fi
+# INVARIANT 1's control: the SHIPPED contract must still forbid a floor. The
+# variant is built in $WORK and removed on exit; if the floor ever leaked into
+# agents/, the ablation would have no control AND the plugin would ship a floor.
+if grep -qF 'there is no floor' agents/ganondorf-t2.md; then
+  sok "the shipped contract still forbids a finding floor (INVARIANT 1, and the ablation's control)"
+else
+  sbad "the shipped ganondorf contract no longer forbids a floor -- INVARIANT 1 violated"
+fi
+
+# and the patch itself, LIFTED AND RUN against the real agent file. Anchors
+# drift; a treatment that silently stops applying turns the floor arm back into
+# a second control, which is the exact failure this case has already produced
+# twice for other reasons.
+_abl="$(sed -n '/^  "\$PY" - "\$FLOOR_DIR\/agents\/ganondorf-t2.md" <<'"'"'ABLATE'"'"'$/,/^ABLATE$/p' acceptance/live-cases.sh | sed '1d;$d')"
+if [ -z "$_abl" ]; then
+  sbad "could not lift case 15's ablation patch"
+else
+  # Same probe as gate.sh and live-cases.sh, for the same reason: on Windows
+  # `python3` is often a Store alias stub that exists on PATH and fails to run.
+  _rpy=""
+  for _cand in python python3 py; do
+    if command -v "$_cand" >/dev/null 2>&1 && "$_cand" -c "print(1)" >/dev/null 2>&1; then
+      _rpy="$_cand"; break
+    fi
+  done
+  _ad="$(mktemp -d)"; mkdir -p "$_ad/agents"
+  cp agents/ganondorf-t2.md "$_ad/agents/" 2>/dev/null
+  printf '%s\n' "$_abl" > "$_ad/ablate.py"
+  if [ -n "$_rpy" ] && "$_rpy" "$_ad/ablate.py" "$_ad/agents/ganondorf-t2.md" >/dev/null 2>&1 \
+     && grep -qF 'Report **at least 3 findings**' "$_ad/agents/ganondorf-t2.md" \
+     && ! grep -qF 'there is no floor' "$_ad/agents/ganondorf-t2.md" \
+     && ! grep -qF 'There is no minimum number of findings' "$_ad/agents/ganondorf-t2.md"; then
+    sok "case 15's ablation runs against the real contract and installs a floor where the no-floor text was"
+  else
+    sbad "case 15's ablation no longer applies to the real contract -- its anchors have drifted"
+  fi
+  rm -rf "$_ad"
+fi
 if [ -z "$_c15" ]; then
   sbad "could not lift case 15 from live-cases.sh"
 else

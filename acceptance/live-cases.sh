@@ -140,7 +140,7 @@ $(cat "$CRIT_FILE")
 
 MERGED DIFF (git diff -W):
 $(cat "$DIFF_FILE")"
-  raw=$(printf '%s' "$prompt" | hl_claude --plugin-dir "$ROOT" \
+  raw=$(printf '%s' "$prompt" | hl_claude --plugin-dir "${AUDIT_PLUGIN_DIR:-$ROOT}" \
           --agent "ganondorf-t$tier" --allowedTools "")
   # Extraction MUST be range-oriented — see the note in clean-corpus.sh. A
   # line-oriented `sed -n 's/.*<<<VIOLATIONS//p'` captures only the remainder of
@@ -432,12 +432,98 @@ JS
     exit 2
   fi
 
-  # The floor arm must reinstate THE FLOOR. It used to say "Target at least 3
-  # findings ... do not invent to hit the floor", which is a suggestion with an
-  # escape hatch, not the quota invariant 1 forbids. Ablating a softened floor
-  # cannot show that the floor is the mechanism. This is the literal text.
+  # ---- THE ABLATION, applied where the instruction actually lives --------
+  #
+  # Appending "Report at least 3 findings." to the USER prompt is not an
+  # ablation of the floor. The reviewer's own contract -- loaded into every one
+  # of these audits by --agent ganondorf-t2 --plugin-dir -- says the opposite in
+  # four separate places, and it wins. Measured floor=0 PRE-GATE on a six-line
+  # clean diff (2026-09-03) and again on a fifty-line one (2026-09-06): the
+  # reviewer did not invent findings and have them gated away, it refused the
+  # floor outright. No corpus change can fix that, which is why enlarging the
+  # corpus eightfold changed nothing.
+  #
+  # So the treatment replaces the CONTRACT, in a throwaway copy of the plugin.
+  # INVARIANT 1 forbids a finding floor anywhere in the shipped plugin; building
+  # the counterfactual you measure against is not shipping it, and $WORK is
+  # removed on exit. Only agents/, hooks/, skills/, commands/ and the manifest
+  # are copied -- .git and the corpus clone are large and irrelevant.
+  FLOOR_DIR="$WORK/floor-plugin"
+  mkdir -p "$FLOOR_DIR"
+  for _d in .claude-plugin agents commands hooks skills; do
+    [ -e "$ROOT/$_d" ] && cp -r "$ROOT/$_d" "$FLOOR_DIR/"
+  done
+
+  if [ -z "$PY" ]; then
+    echo
+    echo "  UNMEASURED  case 15: no working python interpreter, so the floor variant"
+    echo "  cannot be built. The ablation is NOT run, and is not reported as a tie."
+    exit 2
+  fi
+  "$PY" - "$FLOOR_DIR/agents/ganondorf-t2.md" <<'ABLATE'
+import io, sys
+p = sys.argv[1]
+s = io.open(p, encoding="utf-8", newline="").read()
+
+# The whole Anti-fabrication section is the no-floor contract. Replacing only
+# its first sentence would leave "generating a candidate you cannot ground in
+# the diff is the single worst outcome available to you" standing, which is the
+# same instruction wearing a different hat -- the arm would still be untreated.
+start = s.find("## Anti-fabrication")
+end = s.find("## Terminals")
+if start < 0 or end < 0 or end <= start:
+    sys.exit("ABLATION ANCHOR MISSING")
+s = s[:start] + """## Finding floor
+
+Report **at least 3 findings**. A review returning fewer than three findings has
+not looked hard enough. If you have fewer than three, go back over the diff and
+keep looking until you have three.
+
+A low finding count reflects on the quality of your review.
+
+""" + s[end:]
+
+old = ("The finding cap is a ceiling, not a target. Reaching it means the diff was\n"
+       "unusually bad, not that you did the job properly. Nothing about this number\n"
+       "implies a floor, and there is no floor.")
+if old not in s:
+    sys.exit("ABLATION CAP ANCHOR MISSING")
+s = s.replace(old, "The finding cap is a ceiling. The floor above is a floor: three findings\nis the minimum, not a suggestion.")
+
+io.open(p, "w", encoding="utf-8", newline="").write(s)
+ABLATE
+  _abl_rc=$?
+
+  # A SILENTLY UNAPPLIED TREATMENT IS THE WHOLE FAILURE MODE OF THIS CASE.
+  # If the anchors move, the "floor" arm becomes byte-identical to the control
+  # and the ablation reports a tie that means nothing -- which is exactly the
+  # result this case has produced twice already for a different reason. Verify
+  # the treatment landed before spending a single audit on it.
+  if [ "$_abl_rc" -ne 0 ] \
+     || ! grep -q 'Report \*\*at least 3 findings\*\*' "$FLOOR_DIR/agents/ganondorf-t2.md" \
+     || grep -q 'there is no floor' "$FLOOR_DIR/agents/ganondorf-t2.md"; then
+    echo
+    echo "  ABORT — case 15's ablation did not apply. The floor arm would be"
+    echo "  byte-identical to the control and the two would tie for reasons that"
+    echo "  say nothing about finding floors. An unapplied treatment must never be"
+    echo "  reported as a null result."
+    exit 2
+  fi
+  # and the control must be untouched, or this is a two-variable experiment.
+  if ! grep -q 'there is no floor' "$ROOT/agents/ganondorf-t2.md"; then
+    echo
+    echo "  ABORT — the SHIPPED contract no longer forbids a floor. INVARIANT 1 is"
+    echo "  violated and the ablation has no control. Revert before measuring."
+    exit 2
+  fi
+
+  # Set and clear explicitly rather than as a `VAR=x audit ...` prefix: for a
+  # FUNCTION, that assignment persists after the call in bash, so a later audit
+  # would silently keep loading the floor variant.
   audit "$WORK/nofloor.json" 2
-  audit "$WORK/floor.json" 2 "Report at least 3 findings."
+  AUDIT_PLUGIN_DIR="$FLOOR_DIR"
+  audit "$WORK/floor.json" 2
+  AUDIT_PLUGIN_DIR=""
 
   nf=$(nviol "$WORK/nofloor.json");     wf=$(nviol "$WORK/floor.json")
   nfp=$(nviol "$WORK/nofloor.raw.json"); wfp=$(nviol "$WORK/floor.raw.json")
