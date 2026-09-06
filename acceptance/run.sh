@@ -318,6 +318,18 @@ if [ -s "$_fx" ] && grep -q 'ORCH_COMMIT=' "$_fx"; then
     *"src/app.js"*) sok "probe fixture actually creates the file its commits depend on" ;;
     *)              sbad "probe fixture does not track src/app.js (got: $_fxout)" ;;
   esac
+  # Case 6 tells link to add a helper to src/account.js. When that file was
+  # absent the task was ill-posed, and link is instructed to stop rather than
+  # reconstruct a missing file by guessing -- so whether it invented the file
+  # was a model judgement call. One measured dispatch created it and committed;
+  # an identical one reported BLOCKED and changed nothing. The second leaves an
+  # unchanged worktree, which the harness auto-removes by design, and case 6
+  # scored that as indiscriminate cleanup. A coin flip between PASS and a false
+  # FAIL, decided by something the fixture controls.
+  case "$_fxout" in
+    *"src/account.js"*) sok "probe fixture creates src/account.js, the file case 6's task edits" ;;
+    *)                  sbad "probe fixture omits src/account.js -- case 6's task asks link to edit a file that does not exist (got: $_fxout)" ;;
+  esac
   case "$_fxout" in
     *ORCH_ON_MAIN=no) sok "probe fixture: case 3 cannot pass vacuously (orch commit is off main)" ;;
     *)               sbad "probe fixture: orchestrator commit is reachable from main -- case 3 is vacuous" ;;
@@ -343,10 +355,48 @@ fi
 # and exits 1 doing it, so `|| echo 0` appends a SECOND zero and the arithmetic
 # test below dies on a two-line value. See the nviol check above.
 _unmeas=$(grep -c 'UNMEASURED  case' acceptance/probe-harness.sh 2>/dev/null || true)
-if [ "${_unmeas:-0}" -ge 3 ]; then
+if [ "${_unmeas:-0}" -ge 4 ]; then
   sok "probe-harness reports UNMEASURED for a non-execution instead of a defect"
 else
   sbad "probe-harness can still score a declined or refused dispatch as a defect ($_unmeas guards)"
+fi
+
+# Case 6 scores retention from an ABSENT worktree, and absent has two causes
+# that look identical: removed although it held work (the defect), or removed
+# because it held none (documented behaviour -- the harness auto-removes
+# unchanged agent worktrees). On 2026-09-06 a dispatch cleared both of case 6's
+# existing guards, reporting DISPATCHED= and TESTS_RC=1, while committing
+# nothing. Case 6 would have convicted the design of doing what it documents.
+if grep -qF 'git cat-file -e "$EXEC_COMMIT"' acceptance/probe-harness.sh; then
+  sok "case 6 verifies the executor's commit against the object store before scoring retention"
+else
+  sbad "case 6 reads an absent worktree as a cleanup defect without checking any work existed"
+fi
+# and the sha must be VERIFIED, not believed. The executor reports it, and a
+# self-report is data, not ground truth. The object outlives the worktree and
+# branch that cleanup removes, so the object store can settle it independently.
+if grep -qF 'COMMIT=<the full sha' acceptance/probe-harness.sh; then
+  sok "case 6 asks the executor for a commit sha it can then check independently"
+else
+  sbad "case 6 has no independently checkable evidence that the executor did work"
+fi
+
+# Case 2 must NOT resolve its own ambiguity in the design's favour. A toplevel
+# equal to the main checkout means either isolation was lost or no executor was
+# dispatched. Downgrading that to UNMEASURED would mask the exact defect case 2
+# exists to catch, and the two errors are not symmetric: a false alarm costs a
+# re-run, a masked isolation failure costs the property.
+_c2="$(sed -n '/^# --- P2\/P3 + case 2/,/^# --- P4 + case 3/p' acceptance/probe-harness.sh)"
+if [ -z "$_c2" ]; then
+  sbad "could not lift case 2 from probe-harness.sh"
+elif printf '%s' "$_c2" | grep -qF 'bad "case 2: executor is isolated'; then
+  if printf '%s' "$_c2" | grep -qF 'AMBIGUOUS'; then
+    sok "case 2 fails on a main-checkout toplevel and names the ambiguity rather than hiding it"
+  else
+    sbad "case 2 fails on a main-checkout toplevel without saying a non-dispatch produces the same line"
+  fi
+else
+  sbad "case 2 no longer fails on a main-checkout toplevel -- a lost worktree would go unreported"
 fi
 
 # and case 3's assertion must not depend on shell plumbing the sandbox refuses.
@@ -610,6 +660,10 @@ else
     _ceil=$(_verdict 1.000 1.000 3 0 3 3 3 2>&1)
     _fals=$(_verdict 0.500 0.900 1 0 3 1 2 2>&1)
     _hold=$(_verdict 0.900 0.500 2 0 3 2 3 2>&1)
+    # A TIE below the ceiling: arm (a) is imperfect, so (b) HAD room to win and
+    # did not. That is the outcome the 2026-09-06 run produced, and it must not
+    # read the same as (a) winning outright -- the evidence is weaker.
+    _tie=$(_verdict 0.889 0.889 4 0 5 4 4 2>&1)
     case "$_ceil" in
       *UNINFORMATIVE*) sok "case 17 refuses a ceiling: arm (a) perfect means (b) cannot beat it" ;;
       *) sbad "case 17 reads a ceiling as a corroboration (got: $(printf '%s' "$_ceil" | head -1))" ;;
@@ -619,8 +673,14 @@ else
       *) sbad "case 17 cannot report a falsification (got: $(printf '%s' "$_fals" | head -1))" ;;
     esac
     case "$_hold" in
+      *TIE*)          sbad "case 17 reports a strict win for (a) as a tie" ;;
       *OK:one-round*) sok "case 17 can report the premise holding when (a) genuinely wins" ;;
       *) sbad "case 17 cannot report a hold (got: $(printf '%s' "$_hold" | head -1))" ;;
+    esac
+    case "$_tie" in
+      *OK:*TIE*) sok "case 17 distinguishes a TIE from (a) winning, below the ceiling" ;;
+      *UNINFORMATIVE*) sbad "case 17 mistakes an imperfect tie for a ceiling -- (b) had room to win there" ;;
+      *) sbad "case 17 reports a tie as an outright win (got: $(printf '%s' "$_tie" | head -1))" ;;
     esac
   fi
 
@@ -629,6 +689,22 @@ else
   # TP=3/3, FP=0, F1=1.000 on a six-line fixture, so `b > a` was arithmetically
   # unreachable. The verdict chain above was correct; the CORPUS was the
   # problem. These checks ask whether the corpus can carry the experiment.
+
+  # 0. The F1 column alone cannot be read. Three arms tying at one F1 can mean
+  #    they agreed on the same criteria, or that they reached DIFFERENT sets of
+  #    equal size -- opposite conclusions about what a second round buys. The
+  #    per-arm sets, and the criteria no arm reached at all, are what separate
+  #    a systematic blind spot from a sampling miss.
+  if printf '%s' "$_l17" | grep -qF 'cited by (a)'; then
+    sok "case 17 prints the criteria each arm actually cited, not just its F1"
+  else
+    sbad "case 17 reports F1 alone -- a tie cannot be told from arms finding different sets"
+  fi
+  if printf '%s' "$_l17" | grep -qF 'missed.txt'; then
+    sok "case 17 names the truth criteria no arm reached, bounding what (b) could have won"
+  else
+    sbad "case 17 does not report which criteria the reviewer never reaches"
+  fi
 
   # 1. It must not be the SHARED fixture. Cases 12, 13 and 15 are measured on
   #    that one, so hardening it in place would silently move three other

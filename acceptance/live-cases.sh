@@ -664,6 +664,23 @@ JS
   echo "        NOTE: arm (c) is NOT yet distinct from arm (a) — both are K"
   echo "        independent audits unioned, with no round-to-round chaining."
   echo "        Its number is reported, but it is not a sequential arm yet."
+
+  # WHICH criteria each arm cited, and which the reviewer never reached.
+  # Without this the F1 column is uninterpretable. A three-way tie at the same
+  # F1 can mean the arms agreed on the same set, or that they found DIFFERENT
+  # sets of the same size -- and those support opposite conclusions about what a
+  # second round buys. The equal numbers cannot tell them apart; the sets can.
+  sort -u "$WORK/arm-a.txt" "$WORK/arm-b.txt" "$WORK/arm-c.txt" > "$WORK/anyarm.txt"
+  comm -13 "$WORK/anyarm.txt" "$WORK/truth.txt" > "$WORK/missed.txt"
+  printf '        cited by (a): %s\n' "$(tr '\n' ' ' < "$WORK/arm-a.txt")"
+  printf '        cited by (b): %s\n' "$(tr '\n' ' ' < "$WORK/arm-b.txt")"
+  printf '        cited by (c): %s\n' "$(tr '\n' ' ' < "$WORK/arm-c.txt")"
+  if grep -q '[^[:space:]]' "$WORK/missed.txt" 2>/dev/null; then
+    printf '        in truth, reached by NO arm: %s\n' "$(tr '\n' ' ' < "$WORK/missed.txt")"
+    echo "        A criterion no arm reached is a SYSTEMATIC blind spot, not a"
+    echo "        sampling miss. Extra rounds cannot recover what the reviewer"
+    echo "        never finds, so this bounds what any (b) could have won."
+  fi
   echo
 
   # A tie between empty arms is not a corroboration, and a non-numeric F1 is
@@ -705,8 +722,19 @@ JS
   elif awk -v a="$F1A" -v b="$F1B" 'BEGIN{exit !(b>a)}'; then
     bad "FALSIFIED: (b) F1=$F1B beats (a) F1=$F1A. The one-round premise is WRONG for this workload."
     echo "        The design must be REVISED, not defended. See the issue's own falsifier clause."
+  elif [ "$F1A" = "$F1B" ]; then
+    # A TIE IS NOT A WIN, and reporting both as "holds" hides which one happened.
+    # A tie is the outcome the premise predicts, so it does not falsify. But it
+    # says the forced round changed NOTHING on this corpus -- neither recall nor
+    # invention -- which is a narrower claim than (a) being better, and it is
+    # the claim a cold session must be handed.
+    ok "one-round premise holds on this corpus, as a TIE: (a) F1=$F1A = (b) F1=$F1B"
+    echo "        The forced second round changed nothing: same criteria, no gain"
+    echo "        in recall and no added invention. That is what the premise"
+    echo "        predicts, but it is WEAKER than (a) winning outright. It shows"
+    echo "        the extra round bought nothing HERE, not that it never can."
   else
-    ok "one-round premise holds on this corpus: (a) F1=$F1A >= (b) F1=$F1B"
+    ok "one-round premise holds on this corpus: (a) F1=$F1A > (b) F1=$F1B"
   fi
   echo
 fi

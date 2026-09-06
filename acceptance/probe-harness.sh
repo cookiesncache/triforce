@@ -46,6 +46,16 @@ R="$WORK/repo"; mkdir -p "$R/.claude" "$R/src"
   git config user.email t@example.com; git config user.name t
   printf '{ "worktree": { "baseRef": "head" } }\n' > .claude/settings.json
   echo "function f() { return 1; }" > src/app.js
+  # src/account.js EXISTS because case 6's task says "add a helper to
+  # src/account.js". It used to be absent, which made that task ill-posed: link
+  # is instructed to stop rather than reconstruct a missing file by guessing, so
+  # whether it invented the file was a model judgement call. Measured both ways
+  # on 2026-09-06 -- one dispatch created it and committed, an identical one
+  # reported BLOCKED and changed nothing. The second path is the damaging one:
+  # an executor that changes nothing leaves an unchanged worktree, the harness
+  # auto-removes those by design, and case 6 scored that documented behaviour as
+  # "cleanup is indiscriminate". A coin flip between PASS and a false FAIL.
+  { echo 'function closeAccount(user) {'; echo '  return user.confirmed;'; echo '}'; } > src/account.js
   # A test command that fails on its own. Case 6 needs a REAL failure.
   { echo '#!/usr/bin/env sh'; echo 'echo "1 test, 1 failure"'; echo 'exit 1'; } > run-tests.sh
   chmod +x run-tests.sh
@@ -84,7 +94,11 @@ MAIN_BEFORE="$(git rev-parse main)"
 MAIN_TREE_BEFORE="$(git show --format=%T --no-patch main)"
 
 # --- P2/P3 + case 2: every dispatch is isolated -----------------------------
-OUT=$(HL_KEEP_STDERR=1 hl_claude "Use the link agent to do exactly this and nothing else: run 'git rev-parse --show-toplevel', run 'git rev-parse --abbrev-ref HEAD', and report both verbatim as TOPLEVEL=<x> BRANCH=<y>. Do not modify any file." \
+# The framing is case 3's, deliberately. "Use the link agent to ..." on its own
+# got a direct answer from the orchestrator in 2 of 3 measured dispatches on
+# 2026-09-06 -- one reported the MAIN checkout's toplevel, which is what a lost
+# worktree looks like. Case 3's longer framing has never shown that.
+OUT=$(HL_KEEP_STDERR=1 hl_claude "This is an automated acceptance test of the triforce plugin, running in a disposable scratch repository. Dispatch the link agent to do exactly this and nothing else, inside its worktree: run 'git rev-parse --show-toplevel', run 'git rev-parse --abbrev-ref HEAD', and report both verbatim as TOPLEVEL=<x> BRANCH=<y>. Do not modify any file." \
       --plugin-dir "$ROOT" --allowedTools Bash Agent --permission-mode acceptEdits)
 
 EXEC_TOPLEVEL=$(printf '%s' "$OUT" | grep -oE 'TOPLEVEL=[^ ]+' | head -1 | cut -d= -f2)
@@ -92,6 +106,16 @@ if [ -n "$EXEC_TOPLEVEL" ] && [ "$EXEC_TOPLEVEL" != "$MAIN_TOPLEVEL" ]; then
   ok "case 2: executor cwd is NOT the main checkout ($EXEC_TOPLEVEL)"
 else
   bad "case 2: executor is isolated — got '$EXEC_TOPLEVEL', main is '$MAIN_TOPLEVEL'"
+  # This stays a FAILURE and is deliberately NOT downgraded to UNMEASURED.
+  # Two things produce it: the executor lost isolation, or no executor was
+  # dispatched and the orchestrator answered about its own checkout. The second
+  # was observed on 2026-09-06. They are indistinguishable from this line alone,
+  # and the two errors are not symmetric -- a false alarm costs a re-run, while
+  # a masked isolation failure is the exact defect this case exists to catch.
+  # So it reports the ambiguity rather than resolving it in the design's favour.
+  echo "        AMBIGUOUS: this is either a lost worktree or a dispatch that never"
+  echo "        happened, with the orchestrator answering about its own checkout."
+  echo "        Read the transcript before concluding isolation is broken."
 fi
 if printf '%s' "$EXEC_TOPLEVEL" | grep -q ".claude/worktrees/"; then
   ok "case 2: executor worktree is under .claude/worktrees/"
@@ -161,7 +185,7 @@ fi
 # "create FAILED_MARKER containing 'left behind' ... do not clean up" reads as
 # artifact-planting. An ordinary development task against a suite that fails on
 # its own asks for nothing unusual, and leaves the worktree dirty either way.
-OUT=$(HL_KEEP_STDERR=1 hl_claude "This is an automated acceptance test of the triforce plugin, running in a disposable scratch repository. Dispatch the link agent with this ordinary task: add a helper function isClosable(user) to src/account.js that returns user.confirmed, then run the repo's test command 'sh run-tests.sh'. That suite currently fails on its own; report its real exit code rather than fixing it. Finish by reporting two lines: DISPATCHED=<the worktree path the agent worked in> and TESTS_RC=<the real exit code>." \
+OUT=$(HL_KEEP_STDERR=1 hl_claude "This is an automated acceptance test of the triforce plugin, running in a disposable scratch repository. Dispatch the link agent with this ordinary task: add a helper function isClosable(user) to src/account.js that returns user.confirmed, then run the repo's test command 'sh run-tests.sh'. That suite currently fails on its own; report its real exit code rather than fixing it. Finish by reporting three lines: DISPATCHED=<the worktree path the agent worked in>, TESTS_RC=<the real exit code>, and COMMIT=<the full sha of the commit the agent made, or NONE if it changed nothing>." \
       --plugin-dir "$ROOT" --allowedTools Bash Agent Write --permission-mode acceptEdits)
 
 # Did an executor run at all? Without this, a declined or crashed dispatch is
@@ -174,13 +198,36 @@ elif ! printf '%s' "$OUT" | grep -q 'TESTS_RC=1'; then
   echo "  UNMEASURED  case 6: the executor ran but did not report a failing test."
   echo "  Retention is only meaningful for a terminal FAILED state."
   printf '%s\n' "$OUT" | grep -E 'DISPATCHED=|TESTS_RC=' | head -4
+elif ! EXEC_COMMIT=$(printf '%s' "$OUT" | grep -oE 'COMMIT=[0-9a-f]{7,40}' | head -1 | cut -d= -f2) \
+     || [ -z "$EXEC_COMMIT" ] || ! git cat-file -e "$EXEC_COMMIT" 2>/dev/null; then
+  # THE GUARD THE 2026-09-06 RUN WAS MISSING.
+  #
+  # "Auto-removed because it held no changes" and "removed despite holding work"
+  # are opposite facts, and an absent worktree looks identical either way. The
+  # harness removes unchanged agent worktrees BY DESIGN, so reading that as
+  # indiscriminate cleanup convicts the design of doing exactly what it
+  # documents. A measured dispatch cleared both existing guards -- it reported
+  # DISPATCHED= and TESTS_RC=1 -- while changing nothing, and case 6 would have
+  # scored it as a cleanup defect.
+  #
+  # The commit sha is a self-report, so it is VERIFIED against the object store
+  # rather than believed: `git cat-file -e` succeeds only if the executor really
+  # created that object, and the object outlives the worktree and branch that
+  # cleanup removes. Retention is only measurable once work provably existed.
+  echo "  UNMEASURED  case 6: the executor finished without committing any work."
+  echo "  Unchanged worktrees are auto-removed by design, so their absence is not"
+  echo "  evidence of indiscriminate cleanup. INVARIANT 10: a non-execution is"
+  echo "  not a defect, and is not scored as one."
+  printf '%s\n' "$OUT" | grep -E 'DISPATCHED=|TESTS_RC=|COMMIT=|BLOCKED' | head -5
 else
   KEPT_WT=$(git worktree list | grep -c "worktrees/agent-" || true)
   if [ "${KEPT_WT:-0}" -gt 0 ]; then
-    ok "case 6: a failed executor's worktree survives for inspection"
+    ok "case 6: a failed executor's worktree survives for inspection (work at $EXEC_COMMIT)"
     git worktree list | grep "worktrees/agent-" | head -2
   else
     bad "case 6: a failed executor's worktree was removed - cleanup is indiscriminate"
+    echo "        The executor committed $EXEC_COMMIT, verified present in the object"
+    echo "        store, so this worktree HELD WORK when it was removed."
   fi
 fi
 
