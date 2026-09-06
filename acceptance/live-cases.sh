@@ -646,9 +646,20 @@ function applyRefund(invoice, amount) {
 module.exports = { lineTotal, invoiceTotal, applyRefund };
 JS
 
+    cat > src/migrate.js <<'JS'
+const profiles = require('./profiles');
+const settings = require('./settings');
+
+function loadUser(id) {
+  return profiles.get(id);
+}
+
+module.exports = { loadUser };
+JS
+
     git add -A; git commit -qm base
 
-    # ---- the seeded commit: FIVE defects, over five of the seven criteria ---
+    # ---- the seeded commit: SIX defects, over five of the seven criteria ----
     cat > src/session.js <<'JS'
 const store = require('./store');
 
@@ -719,7 +730,24 @@ function applyRefund(invoice, amount) {
 module.exports = { lineTotal, invoiceTotal, applyRefund };
 JS
 
-    git commit -qam "add session bump, export purge helper, refund path"
+    cat > src/migrate.js <<'JS'
+const profiles = require('./profiles');
+const settings = require('./settings');
+
+function loadUser(id) {
+  return profiles.get(id);
+}
+
+function migrateUser(user) {
+  profiles.insert(user.id, user.profile);
+  settings.insert(user.id, user.settings);
+  return true;
+}
+
+module.exports = { loadUser, migrateUser };
+JS
+
+    git commit -qam "add session bump, export purge helper, refund path, user migration"
   ) >/dev/null 2>&1
 
   cd "$HFIX" || exit 1
@@ -775,8 +803,21 @@ JS
   #       item out of every total it returns.
   #   S2  exportForUser calls db.deleteRows BEFORE archiving, and purgeAll
   #       deletes unconditionally. Both destroy rows irreversibly.
-  #   S4  the same ordering, read as rollback: if archiveRows throws, the rows
-  #       are already gone and there is nothing left to roll back to.
+  #   S4  migrateUser writes two stores with no transaction: if the second
+  #       insert fails the first stands, with no compensating action and
+  #       nothing to roll back to.
+  #
+  # S4 HAS ITS OWN DEFECT, and that is a correction, not decoration. It used to
+  # be scored against the same delete-before-archive lines that violate S2 --
+  # two criteria over one defect. Measured 2026-09-06 on an S4-only fixture, the
+  # reviewer cites ONE criterion per defect: it reached S4 in 1 of 3 runs and
+  # the competing domain criterion in 3 of 3. So when a defect satisfies both S2
+  # and S4 and the reviewer labels it S2, S4 becomes unreachable and recall is
+  # capped at 4/5 BY THE TRUTH SET rather than by the reviewer. Case 17's first
+  # run on this corpus tied at F1=0.889 with exactly that cap in force -- a
+  # ceiling again, subtler than the saturation ceiling it replaced, and just as
+  # fatal to the comparison. Every criterion in truth now has a defect that is
+  # uniquely its own.
   #   S6  bumpUses reads s.uses and writes n + 1 as two separate steps, so two
   #       concurrent bumps lose an increment. exportForUser's delete-before-
   #       archive ordering is legitimately citable here too.

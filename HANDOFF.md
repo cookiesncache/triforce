@@ -102,7 +102,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 152 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 153 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -122,12 +122,12 @@ bash acceptance/live-cases.sh --case 15   # PASSED — 2026-09-06, n=4, on a REA
                                          #   pre-gate == post-gate every time, so THE GATE DOES
                                          #   NOT REMOVE THEM. Cause A confirmed. The earlier
                                          #   "inconclusive" was an untreated arm; see below.
-bash acceptance/live-cases.sh --case 17   # NOT FALSIFIED — 2026-09-06, on a HARDER corpus,
-                                         #   n=3. All arms F1=0.889, a TIE, not a win for (a).
-                                         #   The ceiling is gone: (a) missed a criterion, so
-                                         #   (b) had room to win and did not. Read its section
-                                         #   before quoting the result -- one reading of the
-                                         #   miss weakens it considerably.
+bash acceptance/live-cases.sh --case 17   # STILL CANNOT RUN — 2026-09-06, n=6 over two
+                                         #   corpora. First a truth-set cap I built in, then a
+                                         #   CEILING: all arms 5/5, FP=0, F1=1.000. The reviewer
+                                         #   saturates hand-seeded fixtures at K=2. A ceiling is
+                                         #   NOT corroboration. Its section names the two routes
+                                         #   out; one of them needs a decision from you.
 ```
 
 Then, still to be **built**, not just run:
@@ -560,61 +560,73 @@ right; this corpus simply does not demonstrate that the floor is what produced C
 case 17, the corpus is the limiting factor — a clean six-line function gives a reviewer almost
 nothing to invent about. Test the floor on a larger clean diff before concluding either way.
 
-### Case 17 on a corpus that could falsify — NOT falsified, as a TIE (2026-09-06)
+### Case 17: the falsifier still cannot run, and now we know why (2026-09-06)
 
-The corpus was replaced first; the old one is below and explains why. Five defects across three
-files, seven criteria, **S3 and S5 deliberately clean** so precision can fall. Three runs:
+Three attempts today, three different reasons the comparison had no power. Read all three before
+touching this case — each fix exposed the next obstacle, and the last one is not a bug.
+
+**Attempt 1 — a harder corpus.** Five defects over three files, seven criteria, S3 and S5 clean so
+precision could fall. Three runs, every arm identical: `C1 S1 S2 S6`, FP=0, **F1=0.889, a tie**.
+Arm (a) missed one of five, so arm (b) appeared to have room and did not use it.
+
+**That result is WITHDRAWN, and the reason matters more than the result.** The missed criterion was
+S4, and I recorded two readings of it — a reviewer blind spot, or S4 and S2 being co-located on one
+defect so that labelling those lines S2 made S4 unreachable. **The co-located reading is the one
+that survived contact with evidence.**
+
+Probed directly, with a fixture seeding a rollback failure and *nothing else* — two stores written
+with no transaction, so a failed second write leaves the first standing, destroying nothing:
 
 ```
-  (a) K parallel, one round     findings=4  TP=4  FP=0  precision=1.000  F1=0.889
-  (b) + forced second round     findings=4  TP=4  FP=0  precision=1.000  F1=0.889
-  (c) K sequential rounds       findings=4  TP=4  FP=0  precision=1.000  F1=0.889
-        cited by (a): C1 S1 S2 S6
-        cited by (b): C1 S1 S2 S6
-        cited by (c): C1 S1 S2 S6
-        in truth, reached by NO arm: S4
+run 1: pre-gate=[C1]      post-gate=[C1]
+run 2: pre-gate=[C1 S4]   post-gate=[C1 S4]
+run 3: pre-gate=[C1]      post-gate=[C1]
 ```
 
-Identical across all three runs, all three arms. **The premise is not falsified.**
+**The reviewer can reach S4** (run 2), so the blind-spot reading is dead. What it does is cite
+**one criterion per defect**, preferring the domain criterion when one fits: C1 in 3 of 3, S4 in 1
+of 3. So a truth set that assigns two criteria to one defect caps recall *by construction*. The
+0.889 tie was measured against a de facto ceiling of 4/5 that **I had built into the ground
+truth** — a subtler ceiling than the saturation one it replaced, and just as fatal.
 
-**Read it as a TIE, because that is what it is.** The harness now says so explicitly rather than
-printing "holds" for both outcomes. A tie is what the one-round premise predicts, so it does not
-falsify — but it is weaker evidence than (a) winning outright. What is shown is that the forced
-second round changed *nothing*: no gain in recall, and no added invention either. The extra round
-bought nothing HERE. It is not shown that a second round never can.
+**Attempt 2 — give S4 its own defect.** The fixture now seeds the non-atomic migration as a sixth
+defect in a fourth file, so every criterion in truth rests on a defect that is uniquely its own.
+Three more runs:
 
-**The ceiling is genuinely gone, and that matters.** On 2026-09-03 arm (a) scored 3/3 with zero
-false positives, so `b > a` was arithmetically impossible and the comparison had no power. Here
-arm (a) reached 4 of 5: arm (b) **had room to win** and did not. That is the difference between a
-tie that means something and a tie that means nothing.
+```
+  (a) K parallel, one round     findings=5  TP=5  FP=0  precision=1.000  F1=1.000
+  (b) + forced second round     findings=5  TP=5  FP=0  precision=1.000  F1=1.000
+  (c) K sequential rounds       findings=5  TP=5  FP=0  precision=1.000  F1=1.000
+        cited by (a): C1 S1 S2 S4 S6
+```
 
-**S4 is never cited, and there are TWO readings. Do not settle on the flattering one.**
+**UNINFORMATIVE — a ceiling again.** Arm (a) is perfect, arm (b) is arm (a) plus one audit, so
+`b > a` is arithmetically impossible. The guard fired and refused to score it, which is the harness
+working exactly as intended.
 
-- *Blind spot.* The reviewer does not reason about rollback, so it never reaches S4 no matter how
-  many rounds it gets. Under this reading the tie is strong evidence for one round: extra rounds
-  cannot recover what the reviewer never finds.
-- *Co-located criteria.* S4 is violated **only** by the same delete-before-archive lines that
-  violate S2 — there is no S4-only defect in this corpus. If the reviewer emits one finding per
-  defect and labels those lines S2, it **cannot** reach S4, and recall is capped at 4/5 by the
-  ground truth rather than by the reviewer. Under this reading the F1 of 0.889 is an artifact of
-  my truth set and the "blind spot" is a labelling convention.
+**The standing conclusion: the reviewer saturates hand-built seeded-defect fixtures at K=2.** Two
+corpora, one eight times harder than the other, both ended in a ceiling. This is not a result about
+the one-round premise. **It is a statement about what a hand-seeded fixture can measure**, and no
+amount of adding defects of this kind will change it — each new defect gets found too.
 
-The second reading is the one that costs me the finding, which is why it goes first in any
-write-up. It is **not** a gate artifact — `SAFETY = {S1..S6}` is cap-exempt, so both S2 and S4
-would survive gating if both were emitted. **To disambiguate, seed an S4-only defect**: a
-two-step state change whose second step can fail leaving the first applied, destroying nothing.
-If the reviewer cites S4 there, the blind-spot reading is dead and the cap was mine.
+**Do not read any of it as corroboration.** A ceiling is not evidence for the premise; it is the
+absence of evidence either way, and this file has already retracted one number for exactly that
+confusion.
 
-**What this does not establish.** n=3 on ONE corpus with K=2. Arm (c) is still not a sequential
-arm — it is byte-identical in construction to (a), and its number is reported only so the gap is
-visible. A tie on one hand-built fixture is not a result about the workload.
+**What the falsifier would actually need**, and why it is hard: a corpus where a single round
+genuinely fails. Two routes, neither free —
 
-**Two of the three runs exited 2 with a bash syntax error, and that was my doing, not a defect.**
-`acceptance/live-cases.sh` was edited while those runs were reading it. Bash reads a script
-incrementally, so an in-flight edit shifts the file under the running interpreter and it hits
-mid-comment garbage. The case-17 measurement had already printed in full and is unaffected — the
-error lands after the verdict. **Do not edit a harness while a background run of it is in
-flight**, and do not read that exit 2 as a harness failure.
+- **Drop K to 1**, so arm (a) is one audit against arm (b)'s two. Pilot single audits scored 3/5,
+  3/5 and 4/5, so the headroom is real. But K is part of what the arm *means*, and changing it
+  silently would answer a different question than the issue asks. **That is a decision for the
+  user, not a fixture tweak.**
+- **Real commits with real defects**, as case 11 uses. The obstacle moves from "can the reviewer
+  find it" to "can ground truth be established", which is the harder problem and the reason the
+  hand-built fixture existed in the first place.
+
+**One genuine by-product, narrow but real:** 5 of 5 seeded defects found with **zero false
+positives, three runs running, across four files**. That is a measurement about the reviewer. It is
+not a measurement about rounds.
 
 ### Case 17 ran — and it could not have falsified anything (2026-09-03)
 
@@ -847,7 +859,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **152** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **153** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its

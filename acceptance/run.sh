@@ -833,7 +833,9 @@ else
       _seed_C1="-    throw new Error('refund exceeds invoice');"
       _seed_S1="+  for (let i = 1; i < items.length; i++) {"
       _seed_S2="+function purgeAll(userId) {"
-      _seed_S4="+  db.deleteRows(userId);"
+      # S4 must be matched by ITS OWN line, not by S2's. Sharing a marker is
+      # how two criteria came to rest on one defect in the first place.
+      _seed_S4="+  settings.insert(user.id, user.settings);"
       _seed_S6="+  const n = s.uses;"
       for _id in C1 S1 S2 S4 S6; do
         eval "_pat=\"\$_seed_$_id\""
@@ -843,6 +845,36 @@ else
           sbad "case 17's ground truth claims $_id but the seeded diff does not contain it"
         fi
       done
+      # Each truth criterion must be matched by a DISTINCT marker line.
+      #
+      # Why it matters: measured 2026-09-06 on a fixture seeding a rollback
+      # failure and nothing else, the reviewer cites ONE criterion per defect.
+      # It reached S4 in 1 of 3 runs and the competing domain criterion in 3 of
+      # 3. So when one defect satisfies two criteria, citing either makes the
+      # other unreachable, and recall is capped BY THE TRUTH SET rather than by
+      # the reviewer. That happened here: S2 and S4 both scored the same
+      # delete-before-archive lines, the reviewer labelled them S2 every time,
+      # and case 17 tied at F1=0.889 against a de facto ceiling of 4/5.
+      #
+      # WHAT THIS CHECK ACTUALLY VERIFIES, WHICH IS LESS: that no two ids share
+      # a marker STRING. Two different lines can still belong to one defect, and
+      # nothing mechanical can tell that from the markers alone -- so this
+      # catches the crude form and the reasoning above is what catches the rest.
+      # Do not read a green here as proof the criteria are independent.
+      _dupmark=0
+      for _i in C1 S1 S2 S4 S6; do
+        for _j in C1 S1 S2 S4 S6; do
+          [ "$_i" = "$_j" ] && continue
+          eval "_pi=\"\$_seed_$_i\""; eval "_pj=\"\$_seed_$_j\""
+          [ "$_pi" = "$_pj" ] && _dupmark=1
+        done
+      done
+      if [ "$_dupmark" -eq 0 ]; then
+        sok "case 17's truth criteria are matched by distinct marker lines (the crude form of the one-label-per-defect cap)"
+      else
+        sbad "two of case 17's truth criteria share a marker line -- the reviewer cites one label per defect, so recall would be capped by the truth set, not the reviewer"
+      fi
+
       _nfl=$(grep -c '^diff --git' "$_hdf" 2>/dev/null || true)
       if [ "${_nfl:-0}" -ge 3 ]; then
         sok "case 17's defects are spread over $_nfl files, not concentrated in one function"
