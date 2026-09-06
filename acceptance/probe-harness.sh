@@ -220,14 +220,45 @@ elif ! EXEC_COMMIT=$(printf '%s' "$OUT" | grep -oE 'COMMIT=[0-9a-f]{7,40}' | hea
   echo "  not a defect, and is not scored as one."
   printf '%s\n' "$OUT" | grep -E 'DISPATCHED=|TESTS_RC=|COMMIT=|BLOCKED' | head -5
 else
+  # An ABSENT worktree has four causes, and they are not the same finding. The
+  # first measured FAIL here (2026-09-06) reported "cleanup is indiscriminate"
+  # without separating them, which would have convicted the design on a state it
+  # had not distinguished.
+  #
+  #   1. present                    -- retained for inspection. The property.
+  #   2. absent, work MERGED        -- the orchestrator integrated the work and
+  #                                    tidied up. That is case 5's property, and
+  #                                    it means this dispatch ended in SUCCESS,
+  #                                    not the terminal FAILED state case 6 is
+  #                                    about. A pre-existing suite failing is not
+  #                                    the same as the executor's task failing.
+  #   3. absent, unmerged, branch kept -- the work survives on its branch, so
+  #                                    nothing is lost, but it is not retained
+  #                                    for inspection. A real but lesser defect.
+  #   4. absent, unmerged, no branch   -- the work is ORPHANED. The strong
+  #                                    defect, and the only one that loses work.
   KEPT_WT=$(git worktree list | grep -c "worktrees/agent-" || true)
+  KEPT_BR=$(git branch --list 'worktree-agent-*' | wc -l | tr -d ' ')
   if [ "${KEPT_WT:-0}" -gt 0 ]; then
     ok "case 6: a failed executor's worktree survives for inspection (work at $EXEC_COMMIT)"
     git worktree list | grep "worktrees/agent-" | head -2
+  elif git merge-base --is-ancestor "$EXEC_COMMIT" HEAD 2>/dev/null; then
+    echo "  UNMEASURED  case 6: the executor's work was MERGED into the orchestrator's"
+    echo "  branch before cleanup, so this dispatch ended in a SUCCESS state and not"
+    echo "  the terminal FAILED state case 6 is about. Removing a merged worktree is"
+    echo "  case 5's property. The failing test suite was not enough to make the"
+    echo "  EXECUTOR'S OWN TASK fail, which is what retention keys on."
+    echo "  Retention remains unmeasured. This is not scored in either direction."
+  elif [ "${KEPT_BR:-0}" -gt 0 ]; then
+    bad "case 6: the worktree was removed but its branch survives - work is recoverable, inspection is not"
+    echo "        $EXEC_COMMIT is unmerged and still reachable from a"
+    echo "        worktree-agent-* branch, so nothing is lost. Cleanup is still not"
+    echo "        terminal-state-aware, but this does not destroy work."
   else
     bad "case 6: a failed executor's worktree was removed - cleanup is indiscriminate"
     echo "        The executor committed $EXEC_COMMIT, verified present in the object"
-    echo "        store, so this worktree HELD WORK when it was removed."
+    echo "        store, NOT merged into the orchestrator's branch, and NOT reachable"
+    echo "        from any worktree-agent-* branch. That work is ORPHANED."
   fi
 fi
 

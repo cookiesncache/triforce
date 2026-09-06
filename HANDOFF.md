@@ -106,22 +106,28 @@ bash acceptance/run.sh                    # DONE — 128 checks green, 5/5 suite
                                          #   Verified at the committed tip, 2026-09-03.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
-bash acceptance/probe-harness.sh          # 6/7 + 1 UNMEASURED, PROBE_EXIT=0 (2026-09-06)
-                                         #   Case 6 has now failed for THREE different stated
-                                         #   reasons across runs. Latest: link reported its
-                                         #   worktree was "not a real git worktree". Read the
-                                         #   transport section AND the case 6 lead below.
+bash acceptance/probe-harness.sh          # 6/6 + 1 UNMEASURED, PROBE_EXIT=0 (2026-09-06)
+                                         #   Case 6 MEASURES the property now, after its
+                                         #   fixture was fixed. It is NON-DETERMINISTIC:
+                                         #   two runs the same day, one PASS one FAIL.
+                                         #   Read its section before quoting either.
 bash acceptance/live-cases.sh --case 12   # FAILED — 2026-09-03, on the CORRECTED blocking-only
                                          #   population. S4 leaked. This one is real. Section below.
 bash acceptance/live-cases.sh --case 13   # PASSED — 2026-09-03, drift=0, verifier enum clean.
                                          #   Its FIRST pass that day was VACUOUS (empty round-2
                                          #   diff); fixture fixed, this is the real one. n=1.
-bash acceptance/live-cases.sh --case 15   # INCONCLUSIVE — 2026-09-03. floor=0 vs no-floor=0.
-                                         #   The ablation does NOT confirm the floor is the
-                                         #   mechanism. Read its section before re-running.
-bash acceptance/live-cases.sh --case 17   # RAN — but UNINFORMATIVE. All three arms scored
-                                         #   F1=1.000. Ceiling effect: (b) COULD NOT beat (a).
-                                         #   The corpus is too easy. Read its section.
+bash acceptance/live-cases.sh --case 15   # UNMEASURABLE AS SPECIFIED — 2026-09-06. Still
+                                         #   floor=0 vs no-floor=0 on a corpus 8x larger, so
+                                         #   "the corpus was too small" is DEAD. The ablation
+                                         #   injects a floor into the PROMPT while the agent's
+                                         #   own contract forbids floors. Read its section:
+                                         #   re-running it as-is cannot produce a result.
+bash acceptance/live-cases.sh --case 17   # NOT FALSIFIED — 2026-09-06, on a HARDER corpus,
+                                         #   n=3. All arms F1=0.889, a TIE, not a win for (a).
+                                         #   The ceiling is gone: (a) missed a criterion, so
+                                         #   (b) had room to win and did not. Read its section
+                                         #   before quoting the result -- one reading of the
+                                         #   miss weakens it considerably.
 ```
 
 Then, still to be **built**, not just run:
@@ -260,6 +266,86 @@ So the likely reading is that worktree *setup* failed for that one dispatch, not
 is broken. But that is a hypothesis about an agent's **self-report, which is data and not ground
 truth**, and it is unresolved. Case 6's retention check cannot be measured until a write dispatch
 gets a real worktree. Investigate before trusting a case 6 result in either direction.
+
+### Case 6 measures the property now — and it is NON-DETERMINISTIC (2026-09-06)
+
+**The earlier "not a real git worktree" lead did not reproduce and is downgraded.** Two
+diagnostic dispatches of case 6's exact shape against fresh scratch repos both got a REAL
+worktree: `git rev-parse --show-toplevel` and `--git-dir` resolved under `.claude/worktrees/`,
+`.git` present. Not closed — two runs cannot prove a non-deterministic self-report never happens —
+but it is no longer the leading explanation.
+
+**What did reproduce is the fixture.** `src/account.js` — the file case 6's task tells link to
+edit — was never created by the fixture. link is instructed to stop rather than reconstruct a
+missing file by guessing, so whether it invented the file was a model judgement call. Measured
+both ways: one dispatch created it and committed, an identical one reported `BLOCKED` and changed
+nothing. The second path leaves an unchanged worktree, **the harness auto-removes those by
+design**, and case 6 scored that documented behaviour as "cleanup is indiscriminate".
+
+That dispatch cleared **both** of case 6's existing guards — it reported `DISPATCHED=` and
+`TESTS_RC=1` — while committing nothing. So the fixture creates the file, and case 6 now requires
+verified proof that work existed: the executor reports its commit sha and the sha is checked with
+`git cat-file -e` rather than believed. A self-report is data, not ground truth, and the object
+outlives the worktree and branch that cleanup removes.
+
+**Two runs the same day, opposite outcomes:**
+
+```
+run 1   FAIL  worktree removed; commit 420725f verified present in the object store
+run 2   PASS  worktree retained at agent-acb13014..., work at 3353fac on its own branch
+```
+
+**Both are real measurements** — the commit was verified before either verdict. Retention is
+therefore **not established and not refuted**. Do not quote either run alone. The runs differed in
+one visible way: case 3 was UNMEASURED in run 2 (the model declined the dispatch as zelda-only),
+so one fewer worktree existed beforehand. That is a hypothesis about sweep timing, not a finding.
+
+An absent worktree now resolves into four states rather than one, because they are not the same
+finding and the first FAIL did not distinguish them:
+
+| state | verdict |
+|---|---|
+| present | **ok** — retained for inspection |
+| absent, work MERGED into the orchestrator's branch | **UNMEASURED** — a success state, so this is case 5's property, not retention. A pre-existing suite failing is not the executor's own task failing |
+| absent, unmerged, branch survives | **FAIL**, lesser — work recoverable, inspection lost |
+| absent, unmerged, no branch | **FAIL**, strong — the work is ORPHANED |
+
+Run 1's FAIL predates this grading, so which of the last two it was is unknown. The next FAIL will
+say.
+
+### Case 15 is UNMEASURABLE as specified — the floor cannot reach the reviewer (2026-09-06)
+
+The 2026-09-03 result was `floor=0 vs no-floor=0`, and the hypothesis was that a six-line clean
+function gave a floor nothing to invent about. **That hypothesis is dead.** The clean corpus was
+enlarged roughly eightfold — five functions, 50+ added lines, C1 kept live rather than irrelevant —
+and the result is byte-identical: `post-gate: no-floor=0 floor=0 | pre-gate: no-floor=0 floor=0`.
+
+The floor arm produced **zero findings pre-gate**. The reviewer did not invent three findings and
+have them gated away; it refused the floor outright. The reason is in the reviewer's own contract,
+which `--agent ganondorf-t2 --plugin-dir` loads into every one of these audits:
+
+> There is no minimum number of findings. There is no target. There is no expected count, no
+> typical range, and nothing about a low count that reflects on the quality of your review.
+
+> Generating a candidate you cannot ground in the diff is the single worst outcome available to
+> you
+
+> Nothing about this number implies a floor, and there is no floor.
+
+**So the "floor arm" is not an ablation.** It is a conflict test between one line appended to a
+user prompt and a system prompt written specifically to reject exactly that line — and the system
+prompt wins. Case 15 cannot measure Cause A this way no matter how the corpus changes, which is
+why enlarging it changed nothing.
+
+**This is not a null result about the floor.** It is the experiment failing to apply the
+treatment. Reporting `floor=0 vs no-floor=0` as evidence about finding floors would be reading a
+harness limitation as a fact about the design.
+
+A real ablation has to remove the anti-floor contract and install a floor **in the agent
+definition**, then run that variant against the same clean diff — one changed thing, in the place
+the instruction actually lives. It must be built in a THROWAWAY plugin copy: INVARIANT 1 says no
+finding floor anywhere in the shipped plugin, and building the counterfactual you measure against
+is not the same as shipping it.
 
 ### Case 12's FAIL is VOID — it counted the wrong population (harness fixed 2026-09-03)
 
@@ -438,6 +524,62 @@ right; this corpus simply does not demonstrate that the floor is what produced C
 case 17, the corpus is the limiting factor — a clean six-line function gives a reviewer almost
 nothing to invent about. Test the floor on a larger clean diff before concluding either way.
 
+### Case 17 on a corpus that could falsify — NOT falsified, as a TIE (2026-09-06)
+
+The corpus was replaced first; the old one is below and explains why. Five defects across three
+files, seven criteria, **S3 and S5 deliberately clean** so precision can fall. Three runs:
+
+```
+  (a) K parallel, one round     findings=4  TP=4  FP=0  precision=1.000  F1=0.889
+  (b) + forced second round     findings=4  TP=4  FP=0  precision=1.000  F1=0.889
+  (c) K sequential rounds       findings=4  TP=4  FP=0  precision=1.000  F1=0.889
+        cited by (a): C1 S1 S2 S6
+        cited by (b): C1 S1 S2 S6
+        cited by (c): C1 S1 S2 S6
+        in truth, reached by NO arm: S4
+```
+
+Identical across all three runs, all three arms. **The premise is not falsified.**
+
+**Read it as a TIE, because that is what it is.** The harness now says so explicitly rather than
+printing "holds" for both outcomes. A tie is what the one-round premise predicts, so it does not
+falsify — but it is weaker evidence than (a) winning outright. What is shown is that the forced
+second round changed *nothing*: no gain in recall, and no added invention either. The extra round
+bought nothing HERE. It is not shown that a second round never can.
+
+**The ceiling is genuinely gone, and that matters.** On 2026-09-03 arm (a) scored 3/3 with zero
+false positives, so `b > a` was arithmetically impossible and the comparison had no power. Here
+arm (a) reached 4 of 5: arm (b) **had room to win** and did not. That is the difference between a
+tie that means something and a tie that means nothing.
+
+**S4 is never cited, and there are TWO readings. Do not settle on the flattering one.**
+
+- *Blind spot.* The reviewer does not reason about rollback, so it never reaches S4 no matter how
+  many rounds it gets. Under this reading the tie is strong evidence for one round: extra rounds
+  cannot recover what the reviewer never finds.
+- *Co-located criteria.* S4 is violated **only** by the same delete-before-archive lines that
+  violate S2 — there is no S4-only defect in this corpus. If the reviewer emits one finding per
+  defect and labels those lines S2, it **cannot** reach S4, and recall is capped at 4/5 by the
+  ground truth rather than by the reviewer. Under this reading the F1 of 0.889 is an artifact of
+  my truth set and the "blind spot" is a labelling convention.
+
+The second reading is the one that costs me the finding, which is why it goes first in any
+write-up. It is **not** a gate artifact — `SAFETY = {S1..S6}` is cap-exempt, so both S2 and S4
+would survive gating if both were emitted. **To disambiguate, seed an S4-only defect**: a
+two-step state change whose second step can fail leaving the first applied, destroying nothing.
+If the reviewer cites S4 there, the blind-spot reading is dead and the cap was mine.
+
+**What this does not establish.** n=3 on ONE corpus with K=2. Arm (c) is still not a sequential
+arm — it is byte-identical in construction to (a), and its number is reported only so the gap is
+visible. A tie on one hand-built fixture is not a result about the workload.
+
+**Two of the three runs exited 2 with a bash syntax error, and that was my doing, not a defect.**
+`acceptance/live-cases.sh` was edited while those runs were reading it. Bash reads a script
+incrementally, so an in-flight edit shifts the file under the running interpreter and it hits
+mid-comment garbage. The case-17 measurement had already printed in full and is unaffected — the
+error lands after the verdict. **Do not edit a harness while a background run of it is in
+flight**, and do not read that exit 2 as a harness failure.
+
 ### Case 17 ran — and it could not have falsified anything (2026-09-03)
 
 #### The result, verbatim
@@ -583,6 +725,16 @@ the one multi-model arrangement the research supports.
   **The gate was innocent throughout** — `gate.sh` discarded nothing, because it was
   never handed a candidate. Verifying that the *model* emits findings does not verify
   that the *harness* can read them; check the whole path.
+
+- **Never edit a harness while a background run of it is in flight.** Bash reads a script
+  incrementally rather than loading it whole, so an edit lands under the running
+  interpreter and it resumes at a byte offset that is now the middle of a different line.
+  Two case-17 runs on 2026-09-06 printed their complete, correct measurement and then died
+  with `syntax error near unexpected token` in the middle of a COMMENT, exiting 2. Nothing
+  was wrong with the file — `bash -n` passed before and after. The trap is that the exit
+  code says the harness is broken when the measurement is fine, and the reverse mistake is
+  just as available: a real failure dismissed as "probably my edit". Let the run finish, or
+  copy the script and run the copy.
 
 - **A NON-EXECUTION IS NOT A DEFECT.** This bit three times in one session, in three
   different disguises, and every disguise produced a *confident false alarm* rather than

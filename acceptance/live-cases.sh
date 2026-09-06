@@ -343,6 +343,20 @@ if want 15; then
   # the DEFECTIVE commit, so HEAD~1..HEAD is the defect-INTRODUCING diff and the
   # case audits a dirty diff while asserting the diff is clean. Every standalone
   # run measured the wrong thing. So case 15 now commits its own clean state.
+  #
+  # The clean state also has to be BIG ENOUGH to be worth inventing about. The
+  # 2026-09-06 ablation came back floor=0 vs no-floor=0, pre-gate AND post-gate:
+  # the floor manufactured nothing, so floor removal was not shown to be the
+  # mechanism for Cause A. That is a statement about the corpus. A six-line
+  # function offers a reviewer under "report at least 3 findings" nowhere to go
+  # -- there is no surface to invent against, so the arm that should have
+  # produced junk produced silence, and the ablation had nothing to compare.
+  #
+  # Every function below is deliberately, boringly correct: loops start at 0,
+  # nothing is destructive, nothing is unbounded, nothing is order-dependent,
+  # and C1 stays live rather than irrelevant -- closeAccount keeps its guard and
+  # the new helpers respect confirmation. A reviewer that finds nothing here is
+  # right. A reviewer under a floor has to invent to reach three.
   cd "$FIX" || exit 1
   cat > src/account.js <<'JS'
 function closeAccount(user, opts) {
@@ -352,14 +366,69 @@ function closeAccount(user, opts) {
   const rows = db.find(user.id);
   return archive(rows, opts);
 }
+
+function isClosable(user) {
+  return user.confirmed === true;
+}
+
+function describeAccount(user) {
+  if (user.confirmed) {
+    return 'account ' + user.id + ' (confirmed)';
+  }
+  return 'account ' + user.id + ' (unconfirmed)';
+}
+
+function countClosable(users) {
+  let n = 0;
+  for (let i = 0; i < users.length; i++) {
+    if (isClosable(users[i])) {
+      n = n + 1;
+    }
+  }
+  return n;
+}
+
+function partitionByConfirmation(users) {
+  const confirmed = [];
+  const pending = [];
+  for (let i = 0; i < users.length; i++) {
+    if (isClosable(users[i])) {
+      confirmed.push(users[i]);
+    } else {
+      pending.push(users[i]);
+    }
+  }
+  return { confirmed: confirmed, pending: pending };
+}
+
+module.exports = {
+  closeAccount: closeAccount,
+  isClosable: isClosable,
+  describeAccount: describeAccount,
+  countClosable: countClosable,
+  partitionByConfirmation: partitionByConfirmation
+};
 JS
-  git commit -qam "restore the guard and stop purging" >/dev/null 2>&1
+  git commit -qam "restore the guard, stop purging, add account helpers" >/dev/null 2>&1
   git diff -W HEAD~1..HEAD > "$WORK/diff.txt"
   if ! grep -q '[^[:space:]]' "$WORK/diff.txt" 2>/dev/null; then
     echo
     echo "  ABORT — case 15's clean diff is EMPTY. A reviewer handed nothing will"
     echo "  return nothing, and 'clean diff returns zero violations' would hold by"
     echo "  construction. Fix the fixture, do not report a pass."
+    exit 2
+  fi
+  # Non-empty is not enough. The ABLATION needs surface, not just a diff: the
+  # floor arm can only be shown to manufacture findings if there is something to
+  # manufacture them about. Too small and floor=0 vs no-floor=0 is guaranteed
+  # before the model is called, which is what 2026-09-06 measured.
+  _c15add=$(grep -c '^+[^+]' "$WORK/diff.txt" 2>/dev/null || true)
+  if [ "${_c15add:-0}" -lt 25 ]; then
+    echo
+    echo "  ABORT — case 15's clean diff adds only ${_c15add:-0} lines. A floor arm"
+    echo "  has nothing to invent about at that size, so floor=0 vs no-floor=0 is"
+    echo "  guaranteed by the corpus before the model is asked. That is not an"
+    echo "  ablation. Enlarge the clean state, do not report the tie."
     exit 2
   fi
 
