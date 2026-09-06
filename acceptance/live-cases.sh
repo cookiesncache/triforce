@@ -39,11 +39,19 @@ GATE="$ROOT/skills/triforce/scripts/gate.sh"
 LEDGER="$ROOT/skills/triforce/scripts/ledger.sh"
 ONLY=""
 CORPUS_REPO="$ROOT"
+# Case 17's corpus. `hard` is the self-contained fixture and the default, so the
+# case stays runnable with no external repo. `django` seeds the same defect
+# classes into a REAL commit, so the surrounding code is realistic noise -- see
+# the note in case 17.
+CORPUS="hard"
+DJ_HOST=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --case) ONLY="$2"; shift 2 ;;
     --repo) CORPUS_REPO="$2"; shift 2 ;;
+    --corpus) CORPUS="$2"; shift 2 ;;
+    --host) DJ_HOST="$2"; shift 2 ;;
     *) echo "live-cases: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -579,6 +587,143 @@ if want 17; then
   # The untouched code is kept deliberately boring for the same reason: an
   # accidental sixth defect would score as a false positive and penalise
   # whichever arm searched hardest.
+  if [ "$CORPUS" = "django" ]; then
+    # ---- the django-seeded corpus ---------------------------------------
+    # The hand-built fixture below is fully found by the reviewer: 5/5 with
+    # FP=0 on three runs, so `b > a` is unreachable and the falsifier has no
+    # power. That is a statement about hand-seeded fixtures, not about rounds,
+    # and adding more defects of the same kind does not help -- each new one
+    # gets found too.
+    #
+    # This corpus keeps the ground truth knowable (the defects are still mine)
+    # while making the diff realistic: base is a real django commit's parent
+    # state, head is that commit PLUS the seeded defects. django's own changes
+    # become the noise a single round has to search through.
+    #
+    # THE HOST COMMIT MUST BE ONE THE REVIEWER RETURNS CLEAN ON, unseeded. If
+    # it legitimately flags something in django's own diff, the truth set scores
+    # that correct finding as a false positive, penalising whichever arm
+    # searched hardest -- the same bias that adding S4 removed from the fixture
+    # below. Verify a candidate before making it the host; do not adjust for it.
+    [ -d "$CORPUS_REPO/.git" ] || {
+      echo
+      echo "  UNMEASURED  case 17: --corpus django needs --repo <django clone>."
+      echo "  Got '$CORPUS_REPO', which is not a git repository."
+      exit 2
+    }
+    [ -n "$DJ_HOST" ] || {
+      echo
+      echo "  UNMEASURED  case 17: --corpus django needs --host <sha>, and the sha"
+      echo "  must be a commit the reviewer returns CLEAN on unseeded."
+      exit 2
+    }
+    HFIX="$WORK/dj"; mkdir -p "$HFIX"
+    DJ_SUBJ=$(cd "$CORPUS_REPO" && git log -1 --format=%s "$DJ_HOST" 2>/dev/null)
+    # Library code only. django commits touch tests/ heavily, and a reviewer
+    # auditing test changes is noise of a different kind than the noise wanted
+    # here -- it invites findings about the tests rather than about the code.
+    DJ_FILES=$(cd "$CORPUS_REPO" && git show --name-only --format="" "$DJ_HOST" \
+               | grep '\.py$' | grep -v '^tests/' | head -6)
+    if [ -z "$DJ_SUBJ" ] || [ -z "$DJ_FILES" ]; then
+      echo
+      echo "  UNMEASURED  case 17: host $DJ_HOST has no non-test python files, or"
+      echo "  does not resolve in $CORPUS_REPO. Nothing was audited."
+      exit 2
+    fi
+    (
+      cd "$HFIX" || exit 1
+      git init -q -b main; git config user.email t@e.com; git config user.name t
+      for _f in $DJ_FILES; do
+        mkdir -p "$(dirname "$_f")"
+        (cd "$CORPUS_REPO" && git show "$DJ_HOST^:$_f" 2>/dev/null) > "$_f" || : > "$_f"
+      done
+      git add -A; git commit -qm "base"
+      for _f in $DJ_FILES; do
+        (cd "$CORPUS_REPO" && git show "$DJ_HOST:$_f" 2>/dev/null) > "$_f" || : > "$_f"
+      done
+      # ITERATE OVER THE DEFECTS, NOT THE FILES.
+      #
+      # This used to seed one defect per file, cycling. On a host with 2 library
+      # files that seeded 2 defects while the ground truth claimed 4, so S4 and
+      # S6 were unreachable and recall was capped at 2/4 BY THE FIXTURE. That is
+      # the same class of mistake as scoring two criteria against one defect,
+      # and it would have looked like the reviewer missing things.
+      #
+      # All four are always seeded; files are the cycling dimension, so with
+      # fewer files some carry more than one. Each is an idiomatic django
+      # antipattern mapping to exactly one criterion. C1 (the host commit's own
+      # subject), S3 and S5 stay CLEAN, so precision can still fall.
+      set -- $DJ_FILES
+      _nf=$#
+      _i=0
+      for _def in S1 S2 S4 S6; do
+        _i=$((_i + 1))
+        _idx=$(( (_i - 1) % _nf + 1 ))
+        eval "_tf=\${$_idx}"
+        case "$_def" in
+          S1) cat >> "$_tf" <<'PYDEF'
+
+
+def _summarize_field_names(fields):
+    total = 0
+    for i in range(1, len(fields)):
+        total += len(fields[i].name)
+    return total
+PYDEF
+             ;;
+          S2) cat >> "$_tf" <<'PYDEF'
+
+
+def _purge_stale_entries(model, keys):
+    model.objects.all().delete()
+PYDEF
+             ;;
+          S4) cat >> "$_tf" <<'PYDEF'
+
+
+def _migrate_profile(profile, settings_obj):
+    profile.save()
+    settings_obj.save()
+    return True
+PYDEF
+             ;;
+          S6) cat >> "$_tf" <<'PYDEF'
+
+
+def _bump_usage(counter):
+    current = counter.hits
+    counter.hits = current + 1
+    counter.save()
+PYDEF
+             ;;
+        esac
+      done
+      git commit -qam "host change plus seeded defects"
+    ) >/dev/null 2>&1
+
+    cd "$HFIX" || exit 1
+    HARD_BASE="$(git rev-parse HEAD~1)"
+    HARD_HEAD="$(git rev-parse HEAD)"
+    {
+      printf 'C1\t%s\n' "$DJ_SUBJ"
+      printf 'S1\tincorrect output or silently wrong result\n'
+      printf 'S2\tdata loss or irreversible destruction\n'
+      printf 'S3\tsecurity exposure\n'
+      printf 'S4\tfailed or impossible rollback\n'
+      printf 'S5\tunbounded resource consumption\n'
+      printf 'S6\tconcurrency or ordering hazard\n'
+    } > "$WORK/hard-criteria.tsv"
+    git diff -W "$HARD_BASE".."$HARD_HEAD" > "$WORK/hard-diff.txt"
+    CRIT_FILE="$WORK/hard-criteria.tsv"
+    DIFF_FILE="$WORK/hard-diff.txt"
+    # Truth is the SEEDED defects only. C1 is the host commit's own subject and
+    # the host was chosen because the reviewer returns clean on it, so C1, S3
+    # and S5 are the criteria a citation can fall foul of.
+    DJ_TRUTH=1
+    _dloc=$(grep -c '^[+-][^+-]' "$WORK/hard-diff.txt" 2>/dev/null || true)
+    echo "        corpus: django $DJ_HOST, ${_dloc:-0} changed lines, $(printf '%s' "$DJ_FILES" | wc -w | tr -d ' ') files"
+    echo "        host subject (C1): $DJ_SUBJ"
+  else
   HFIX="$WORK/hard"; mkdir -p "$HFIX/src"
   (
     cd "$HFIX" || exit 1
@@ -769,6 +914,8 @@ JS
   git diff -W "$HARD_BASE".."$HARD_HEAD" > "$WORK/hard-diff.txt"
   CRIT_FILE="$WORK/hard-criteria.tsv"
   DIFF_FILE="$WORK/hard-diff.txt"
+  DJ_TRUTH=0
+  fi
 
   if ! grep -q '[^[:space:]]' "$DIFF_FILE" 2>/dev/null; then
     echo
@@ -789,9 +936,33 @@ JS
   audit "$WORK/b-extra.json" 2; crits "$WORK/b-extra.json" >> "$WORK/b.txt"
   sort -u "$WORK/b.txt" > "$WORK/arm-b.txt"
 
-  # (c) K sequential rounds
+  # (c) K SEQUENTIAL rounds -- each round sees what the previous one cited.
+  #
+  # This was byte-identical to arm (a) -- K independent audits unioned -- and
+  # was reported as such rather than silently passed off as sequential. What
+  # makes it sequential is the chaining: round n+1 is told what round n found
+  # and asked to look for what it missed.
+  #
+  # THE EMPTY-ARRAY ESCAPE IS LOAD-BEARING. "Report only what the previous
+  # reviewer missed" is one careless sentence away from a finding floor, which
+  # INVARIANT 1 forbids in any prompt, and a floor was measured manufacturing
+  # false positives on a clean diff in case 15. The instruction says plainly
+  # that missing nothing is an acceptable answer.
+  #
+  # Only chaining changes here. Whether a later round should be able to WITHDRAW
+  # an earlier finding is a different intervention -- it changes authority as
+  # well as chaining, and confounds the two -- so it is held as a separate arm
+  # (d), gated on a corpus that actually produces false positives to withdraw.
+  # Every arm of every run so far has scored FP=0, so arm (d) has nothing to
+  # measure yet.
   : > "$WORK/c.txt"
-  for i in $(seq 1 $K); do audit "$WORK/c$i.json" 2; crits "$WORK/c$i.json" >> "$WORK/c.txt"; done
+  audit "$WORK/c1.json" 2
+  crits "$WORK/c1.json" >> "$WORK/c.txt"
+  for i in $(seq 2 $K); do
+    _prev=$(sort -u "$WORK/c.txt" | tr '\n' ' ')
+    audit "$WORK/c$i.json" 2 "A previous reviewer audited this exact diff and cited these criteria: ${_prev:-none}. Look for violations that reviewer missed, and do not restate the ones it already cited. If it missed nothing, emit an empty array — that is a complete and correct answer here."
+    crits "$WORK/c$i.json" >> "$WORK/c.txt"
+  done
   sort -u "$WORK/c.txt" > "$WORK/arm-c.txt"
 
   # Ground truth for this corpus, judged from the CODE and nothing else. Five
@@ -830,7 +1001,15 @@ JS
   # The previous fixture's truth omitted S4 and scored a correct finding as a
   # false positive, penalising whichever arm searched hardest. Every criterion
   # a careful reviewer can defend from this diff is in the set above.
-  printf 'C1\nS1\nS2\nS4\nS6\n' | sort > "$WORK/truth.txt"
+  if [ "${DJ_TRUTH:-0}" = "1" ]; then
+    # django corpus: the seeded defects are S1, S2, S4 and S6. C1 is the host
+    # commit's own subject, which the host satisfies -- that is why it was
+    # chosen -- so C1, S3 and S5 are all clean and citing any of them is a real
+    # false positive.
+    printf 'S1\nS2\nS4\nS6\n' | sort > "$WORK/truth.txt"
+  else
+    printf 'C1\nS1\nS2\nS4\nS6\n' | sort > "$WORK/truth.txt"
+  fi
 
   # score <arm-file> <label> -- prints the row, sets SCORE_F1.
   #
@@ -857,9 +1036,12 @@ JS
   TPA="$SCORE_TP"; FPA="$SCORE_FP"
   score "$WORK/arm-b.txt" "(b) + forced second round"; F1B="$SCORE_F1"
   score "$WORK/arm-c.txt" "(c) K sequential rounds";   F1C="$SCORE_F1"
-  echo "        NOTE: arm (c) is NOT yet distinct from arm (a) — both are K"
-  echo "        independent audits unioned, with no round-to-round chaining."
-  echo "        Its number is reported, but it is not a sequential arm yet."
+  echo "        arm (c) chains: round n+1 is told what round n cited and asked"
+  echo "        for what it missed, with an explicit empty-array escape so the"
+  echo "        instruction is not a finding floor. Arm (d) — a round that may"
+  echo "        WITHDRAW an earlier finding — is deliberately not built: it would"
+  echo "        change authority as well as chaining, and every run so far has"
+  echo "        scored FP=0, so it would have nothing to withdraw."
 
   # WHICH criteria each arm cited, and which the reviewer never reached.
   # Without this the F1 column is uninterpretable. A three-way tie at the same

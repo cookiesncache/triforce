@@ -770,6 +770,81 @@ else
     sbad "case 17 does not report which criteria the reviewer never reaches"
   fi
 
+  # ---- arm (c) must actually be sequential -------------------------------
+  # It was byte-identical to arm (a) -- K independent audits unioned, no
+  # chaining -- and reported as such rather than passed off as sequential.
+  if printf '%s' "$_l17" | grep -qF 'A previous reviewer audited this exact diff'; then
+    sok "arm (c) chains: a later round is told what the previous one cited"
+  else
+    sbad "arm (c) is still K independent audits unioned -- it is not a sequential arm"
+  fi
+  # INVARIANT 1: no finding floor, in any prompt. "Report what the previous
+  # reviewer missed" is one careless sentence from a quota, and case 15
+  # measured a floor manufacturing false positives on a genuinely clean diff.
+  if printf '%s' "$_l17" | grep -qF 'emit an empty array'; then
+    sok "arm (c)'s chaining prompt says missing nothing is a complete answer -- not a floor"
+  else
+    sbad "arm (c) asks a later round for what was missed with no empty-array escape -- that is a finding floor"
+  fi
+  # Arm (d) -- a round that may WITHDRAW an earlier finding -- changes authority
+  # as well as chaining and would confound the two. It is deliberately absent
+  # while every measured arm scores FP=0 and it would have nothing to withdraw.
+  if printf '%s' "$_s17" | grep -qF 'arm (d)'; then
+    sok "the withdraw-capable arm is named and deliberately deferred, not silently folded into (c)"
+  else
+    sbad "no record of why a withdraw-capable arm is absent -- it will read as an oversight"
+  fi
+
+  # ---- the django-seeded corpus ------------------------------------------
+  # The hand-built fixture is fully found: 5/5 with FP=0 on three runs, so
+  # `b > a` is unreachable and the falsifier has no power. Seeding the same
+  # defect classes into a REAL commit keeps ground truth knowable while making
+  # the diff realistic. These checks guard the ways that can go quietly wrong.
+  if printf '%s' "$_l17" | grep -qF 'CORPUS = "django"' \
+     || printf '%s' "$_l17" | grep -qF '"$CORPUS" = "django"'; then
+    if grep -qE '^CORPUS="hard"' acceptance/live-cases.sh; then
+      sok "case 17 defaults to the self-contained corpus, so a bare --case 17 needs no external repo"
+    else
+      sbad "case 17's default corpus is not the self-contained one -- the case stops being runnable offline"
+    fi
+    # An absent clone or host must be UNMEASURED, never a silent fall back to
+    # the easy corpus: that would report a hand-fixture ceiling under a name
+    # that says the measurement ran on real code.
+    if printf '%s' "$_s17" | grep -qF 'UNMEASURED  case 17: --corpus django needs'; then
+      sok "case 17 reports UNMEASURED when the django corpus is requested without a repo or host"
+    else
+      sbad "case 17 can silently fall back to the easy corpus when --corpus django is unusable"
+    fi
+    # The host must be a commit the reviewer returns CLEAN on. Otherwise its own
+    # legitimate findings score as false positives against a truth set that only
+    # knows about the seeded defects -- penalising whichever arm searched
+    # hardest, which is the bias adding S4 removed from the hand fixture.
+    if printf '%s' "$_s17" | grep -qF 'MUST BE ONE THE REVIEWER RETURNS CLEAN ON'; then
+      sok "case 17 records that the django host must be verified clean before it is seeded"
+    else
+      sbad "case 17 does not require its django host to be a commit the reviewer returns clean on"
+    fi
+    # C1 is the host commit's own subject, which the host satisfies. Including
+    # it in truth would claim a violation nothing seeded.
+    if printf '%s' "$_l17" | grep -qF "printf 'S1"; then
+      sok "case 17's django truth is the seeded defects only, leaving C1, S3 and S5 clean"
+    else
+      sbad "case 17's django truth does not exclude C1 -- it would claim a violation nothing seeded"
+    fi
+    # The seeding must iterate over the DEFECTS. Cycling over files instead
+    # seeded only as many defects as there were files: on a 2-file host that is
+    # 2 defects against a truth set claiming 4, so two criteria were unreachable
+    # and recall was capped at 2/4 by the fixture. It would have looked exactly
+    # like the reviewer missing things.
+    if printf '%s' "$_l17" | grep -qF 'for _def in S1 S2 S4 S6'; then
+      sok "case 17 seeds every claimed defect regardless of how many files the host touches"
+    else
+      sbad "case 17's django seeding cycles over files, so a small host seeds fewer defects than its truth claims"
+    fi
+  else
+    sbad "case 17 has no django corpus arm; the hand fixture is saturated and cannot falsify"
+  fi
+
   # 1. It must not be the SHARED fixture. Cases 12, 13 and 15 are measured on
   #    that one, so hardening it in place would silently move three other
   #    results at the same time.
