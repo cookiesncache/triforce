@@ -102,7 +102,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 171 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 174 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -111,8 +111,11 @@ bash acceptance/probe-harness.sh          # 6/6 + 1 UNMEASURED, PROBE_EXIT=0 (20
                                          #   fixture was fixed. It is NON-DETERMINISTIC:
                                          #   two runs the same day, one PASS one FAIL.
                                          #   Read its section before quoting either.
-bash acceptance/live-cases.sh --case 12   # FAILED — 2026-09-03, on the CORRECTED blocking-only
-                                         #   population. S4 leaked. This one is real. Section below.
+bash acceptance/live-cases.sh --case 12   # FAILS, and now CHARACTERISED — 2026-09-06. The
+                                         #   leak is a RELABEL, not a new citation: 1 relabel,
+                                         #   0 new. Bounded population, unstable labels. Still a
+                                         #   FAIL, but a different and smaller one than "the
+                                         #   schema is leaking". Section below.
 bash acceptance/live-cases.sh --case 13   # PASSED — 2026-09-03, drift=0, verifier enum clean.
                                          #   Its FIRST pass that day was VACUOUS (empty round-2
                                          #   diff); fixture fixed, this is the real one. n=1.
@@ -625,6 +628,52 @@ right; this corpus simply does not demonstrate that the floor is what produced C
 case 17, the corpus is the limiting factor — a clean six-line function gives a reviewer almost
 nothing to invent about. Test the floor on a larger clean diff before concluding either way.
 
+### Case 12's leak is a RELABEL, not a schema leak (2026-09-06)
+
+Case 12's FAIL said "the schema is leaking" — an unbounded population. That was asserted from
+criterion ids, and **the ids cannot support it**. A criterion new to round 2 is either a new
+citation or the same defect wearing a different label, and those are different findings about the
+design. Case 12 now compares **spans**:
+
+```
+  FAIL  idempotence: 1 blocking criterion(s) appeared only on the second run
+        S4
+        S4 at src/account.js:3 — round 1 already cited that span as [C1 S2 ].
+          SAME DEFECT, DIFFERENT LABEL. Not a new finding.
+        character: 1 relabel(s), 0 new citation(s).
+```
+
+**Every leaked criterion sat on a span round 1 had already cited.** The population is bounded; the
+labels are unstable. This was predicted before it was measured: the S4-only probe had already shown
+the reviewer cites **one criterion per defect**, with the label varying between runs, and this is
+the same effect showing up as an idempotence failure.
+
+**It is still a FAIL, and deliberately so.** A re-audit that renames a finding makes the same defect
+look new to the user, which is the complaint case 12 exists to catch. But it is a *smaller* defect
+than an unbounded population, and the write-up must say which one it is. When spans cannot be read,
+the case reports the character as unmeasured rather than assuming the flattering reading.
+
+### Arm (d) is built — and has never been run (2026-09-06)
+
+Its gate condition opened when the django corpus produced the first false positives in this
+measurement. Until then every arm scored FP=0, and a withdraw-capable round would have had nothing
+to withdraw.
+
+- **It REPLACES rather than unions.** Arm (c) unions its rounds, so a later round can only add.
+  Arm (d)'s score is the revision round's output *alone*. Union arm (a) back in and a withdrawal
+  becomes unobservable, which would make (d) a slower copy of (c).
+- **It is a separate arm, never a variant of (c)**, because it changes authority as well as
+  chaining, and beating (a) as one combined change would not say which half did it.
+- **Its prompt leans neither way.** A floor manufactures false positives — INVARIANT 1, and case 15
+  measured exactly that. Pressure to delete would manufacture false *cleans*, which INVARIANT 10
+  cares about at least as much. The prompt states that restating the set unchanged and emitting an
+  empty array are both complete answers.
+- **A run where it withdrew nothing says nothing about withdrawal**, and it says so rather than let
+  its F1 be read as evidence either way.
+
+**NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
+`--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
+
 ### Case 17 on the django corpus — the premise is NOT falsified (2026-09-06, n=3)
 
 The first corpus on which the comparison had power. Three runs, two hosts:
@@ -970,7 +1019,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **171** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **174** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its

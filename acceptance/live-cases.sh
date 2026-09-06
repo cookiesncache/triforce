@@ -1032,6 +1032,32 @@ JS
   done
   sort -u "$WORK/c.txt" > "$WORK/arm-c.txt"
 
+  # (d) A REVISION round: it may DROP an earlier finding as well as add one.
+  #
+  # Deferred until now on purpose. Its only mechanism that (c) lacks is removing
+  # a false positive, and until 2026-09-06 every arm of every run had scored
+  # FP=0 -- so it would have measured nothing. The django corpus produced false
+  # positives (C1 in 2 of 3 runs, S3 in 1), so the gate condition it was waiting
+  # on is met and it has become measurable.
+  #
+  # STRUCTURALLY DIFFERENT FROM (c): arm (c) UNIONS its rounds, so a later round
+  # can only add. Arm (d) REPLACES -- its score is the revision round's output
+  # alone. Union it back in and withdrawal becomes unobservable, which would
+  # make (d) a slower copy of (c).
+  #
+  # It changes authority as well as chaining, so it is a SEPARATE arm and never
+  # a variant of (c): beating (a) as one combined change would not say which
+  # half did it.
+  #
+  # The prompt must not read as a floor OR as pressure to withdraw. It offers
+  # both directions and states plainly that an unchanged set and an empty set
+  # are both complete answers. INVARIANT 1 is about floors, but a prompt that
+  # leans on deletion would manufacture false CLEANS, which INVARIANT 10 cares
+  # about at least as much.
+  _prevd=$(tr '\n' ' ' < "$WORK/arm-a.txt")
+  audit "$WORK/d1.json" 2 "A previous reviewer audited this exact diff and cited these criteria: ${_prevd:-none}. Check each of those citations against the diff yourself, then report the CORRECTED set: keep the ones the diff supports, drop any it does not, and add any the previous reviewer missed. If the previous set is exactly right, restate it unchanged — that is a complete answer. If nothing in this diff is a violation, emit an empty array — that is also a complete answer."
+  crits "$WORK/d1.json" | sort -u > "$WORK/arm-d.txt"
+
   # Ground truth for this corpus, judged from the CODE and nothing else. Five
   # of the seven criteria are violated:
   #
@@ -1103,6 +1129,8 @@ JS
   TPA="$SCORE_TP"; FPA="$SCORE_FP"
   score "$WORK/arm-b.txt" "(b) + forced second round"; F1B="$SCORE_F1"
   score "$WORK/arm-c.txt" "(c) K sequential rounds";   F1C="$SCORE_F1"
+  score "$WORK/arm-d.txt" "(d) revision round, may drop"; F1D="$SCORE_F1"
+  TPD="$SCORE_TP"; FPD="$SCORE_FP"
   echo "        arm (c) chains: round n+1 is told what round n cited and asked"
   echo "        for what it missed, with an explicit empty-array escape so the"
   echo "        instruction is not a finding floor. Arm (d) — a round that may"
@@ -1120,6 +1148,19 @@ JS
   printf '        cited by (a): %s\n' "$(tr '\n' ' ' < "$WORK/arm-a.txt")"
   printf '        cited by (b): %s\n' "$(tr '\n' ' ' < "$WORK/arm-b.txt")"
   printf '        cited by (c): %s\n' "$(tr '\n' ' ' < "$WORK/arm-c.txt")"
+  printf '        cited by (d): %s\n' "$(tr '\n' ' ' < "$WORK/arm-d.txt")"
+  # What the revision round actually DID to (a)'s set -- the only thing that
+  # distinguishes this arm. Dropping nothing makes (d) a restatement of (a), and
+  # its F1 then says nothing about withdrawal either way.
+  comm -23 "$WORK/arm-a.txt" "$WORK/arm-d.txt" > "$WORK/d-dropped.txt"
+  comm -13 "$WORK/arm-a.txt" "$WORK/arm-d.txt" > "$WORK/d-added.txt"
+  printf '        (d) dropped from (a): [%s]  added: [%s]\n' \
+    "$(tr '\n' ' ' < "$WORK/d-dropped.txt")" "$(tr '\n' ' ' < "$WORK/d-added.txt")"
+  if ! grep -q '[^[:space:]]' "$WORK/d-dropped.txt" 2>/dev/null; then
+    echo "        (d) withdrew NOTHING, so on this run it is a restatement of (a)"
+    echo "        plus any additions. Its F1 is reported, but this run says nothing"
+    echo "        about whether a revision round can remove a false positive."
+  fi
   # NAME THE FALSE POSITIVES. The F1 gaps between arms are driven by precision
   # once FPs appear, and an id alone does not say whether a citation was really
   # wrong. Measured 2026-09-06 on django host f30acb18, C1 was cited in 2 of 3
@@ -1239,6 +1280,19 @@ JS
       echo "        cited by (c): $(tr '\n' ' ' < "$WORK/arm-c.txt")"
     else
       echo "  note  the sequential arm did not beat (a): (c) F1=$F1C vs (a) F1=$F1A."
+    fi
+    # The revision arm, on the same footing. It is the only arm that can RAISE
+    # precision, so it is the one with a mechanism to beat (a) on a corpus where
+    # extra rounds otherwise buy invention.
+    if [ -n "${F1D:-}" ] && awk -v a="$F1A" -v d="$F1D" 'BEGIN{exit !(d>a)}'; then
+      bad "FALSIFIED BY THE REVISION ARM: (d) F1=$F1D beats (a) F1=$F1A."
+      echo "        A round that may WITHDRAW beat one round. That is evidence against"
+      echo "        the one-round premise by the one mechanism (b) and (c) lack:"
+      echo "        removing a false positive rather than adding a finding."
+      echo "        Not the issue's literal clause, which names (b). Same class of"
+      echo "        evidence. If it replicates, the design is REVISED, not defended."
+    elif [ -n "${F1D:-}" ]; then
+      echo "  note  the revision arm did not beat (a): (d) F1=$F1D vs (a) F1=$F1A."
     fi
   fi
   echo

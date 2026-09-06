@@ -778,6 +778,37 @@ else
     sbad "case 17 reports FP counts alone -- an inventing arm cannot be told from an unfair truth set"
   fi
 
+  # ---- arm (d), the revision round ---------------------------------------
+  # Deferred until its gate opened: its only mechanism (c) lacks is removing a
+  # false positive, and every arm scored FP=0 until the django corpus produced
+  # some. It must REPLACE rather than union -- union arm (a) back in and a
+  # withdrawal becomes unobservable, making (d) a slower copy of (c).
+  if printf '%s' "$_l17" | grep -qF 'arm-d.txt'; then
+    if printf '%s' "$_l17" | grep -qF 'crits "$WORK/d1.json" | sort -u > "$WORK/arm-d.txt"'; then
+      sok "arm (d) scores the revision round alone, so a withdrawal is observable"
+    else
+      sbad "arm (d) unions its rounds -- a withdrawal cannot be seen, making it a copy of (c)"
+    fi
+    # The prompt must lean neither way. A floor manufactures false positives
+    # (INVARIANT 1, and case 15 measured it); pressure to delete manufactures
+    # false CLEANS, which INVARIANT 10 cares about at least as much.
+    if printf '%s' "$_l17" | grep -qF 'restate it unchanged' \
+       && printf '%s' "$_l17" | grep -qF 'emit an empty array'; then
+      sok "arm (d)'s prompt says an unchanged set and an empty set are both complete answers"
+    else
+      sbad "arm (d)'s prompt leans toward adding or toward withdrawing -- it manufactures one or the other"
+    fi
+    # A run where it withdrew nothing says nothing about withdrawal, and must
+    # say so rather than let its F1 be read as evidence either way.
+    if printf '%s' "$_l17" | grep -qF 'withdrew NOTHING'; then
+      sok "arm (d) says when it withdrew nothing, so its F1 is not read as evidence about withdrawal"
+    else
+      sbad "arm (d) can report an F1 from a run where it withdrew nothing, as if it had been exercised"
+    fi
+  else
+    sbad "arm (d) is absent although its gate condition (false positives to withdraw) is met"
+  fi
+
   # ---- the verdict must be able to see the sequential arm ----------------
   # The falsifier clause names arm (b), and the verdict chain implements it
   # unchanged. But arm (c) only became a real arm on 2026-09-06 -- until then it
@@ -1110,7 +1141,7 @@ defer "case 11 (clean-return rate, THE HEADLINE METRIC) — needs a live model. 
 defer "case 12,13 (idempotence; fix-and-re-audit rounds 1-3) — need a live model. Run acceptance/live-cases.sh --case 12 / --case 13 when authenticated."
 defer "case 15 (floor ablation) — needs a live model; the floor-free static check above is its cheap proxy, not a substitute. Run acceptance/live-cases.sh --case 15."
 defer "case 16 (effective false positives over rolling windows) — needs production audits to accumulate."
-defer "case 17 (the one-round falsifier: parallel vs forced-second-round vs sequential) — needs a live model. Run acceptance/live-cases.sh --case 17. If it falsifies, the design is revised, not defended."
+defer "case 17 arm (d), the REVISION round that may withdraw a finding — built 2026-09-06, NEVER RUN. Its gate opened when the django corpus produced the first false positives. Run acceptance/live-cases.sh --case 17 --corpus django --repo <clone> --host <sha>, on a host verified clean unseeded first."
 
 echo
 echo "=============================================================="
