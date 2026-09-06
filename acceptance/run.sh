@@ -623,6 +623,95 @@ else
       *) sbad "case 17 cannot report a hold (got: $(printf '%s' "$_hold" | head -1))" ;;
     esac
   fi
+
+  # ---- THE CORPUS ITSELF -------------------------------------------------
+  # On 2026-09-03 case 17 ran cleanly and measured nothing: every arm scored
+  # TP=3/3, FP=0, F1=1.000 on a six-line fixture, so `b > a` was arithmetically
+  # unreachable. The verdict chain above was correct; the CORPUS was the
+  # problem. These checks ask whether the corpus can carry the experiment.
+
+  # 1. It must not be the SHARED fixture. Cases 12, 13 and 15 are measured on
+  #    that one, so hardening it in place would silently move three other
+  #    results at the same time.
+  if printf '%s' "$_l17" | grep -qF '> "$WORK/diff.txt"'; then
+    sbad "case 17 writes the shared diff -- hardening its corpus would move cases 12, 13 and 15 too"
+  else
+    sok "case 17 audits its own corpus and leaves the shared fixture untouched"
+  fi
+  if grep -qF 'bash "$GATE" --criteria "$CRIT_FILE" --diff "$DIFF_FILE"' acceptance/live-cases.sh; then
+    sok "audit() reads CRIT_FILE/DIFF_FILE, so a case can supply its own corpus"
+  else
+    sbad "audit() is hard-wired to one corpus -- case 17 cannot differ from cases 12, 13 and 15"
+  fi
+
+  # 2. Truth must be a PROPER subset of the criteria. If every criterion were
+  #    violated, no citation could be a false positive, precision would be
+  #    pinned at 1.000, and F1 would collapse to pure recall -- under which arm
+  #    (b), a superset of (a) by construction, can only match or BEAT it. That
+  #    rigs the run FOR falsification, the mirror image of the ceiling that
+  #    rigged it against. Precision has to be able to fall.
+  _t17="$(printf '%s' "$_l17" | grep -F 'truth.txt' | grep -F 'printf' | head -1)"
+  _tn=$(printf '%s' "$_t17" | grep -oE '(C1|S[1-6])' | grep -c . || true)
+  _cn=$(printf '%s' "$_l17" | grep -oE "printf '(C1|S[1-6])" \
+        | grep -oE '(C1|S[1-6])' | sort -u | grep -c . || true)
+  if [ "${_tn:-0}" -eq 0 ] || [ "${_cn:-0}" -eq 0 ]; then
+    sbad "could not lift case 17's ground truth and criteria ids"
+  else
+    if [ "$_tn" -lt "$_cn" ]; then
+      sok "case 17's truth is a PROPER subset of its criteria ($_tn of $_cn) -- precision can fall"
+    else
+      sbad "case 17's truth covers every criterion ($_tn of $_cn): no citation can be a false positive, F1 collapses to recall, and (b) can only beat (a)"
+    fi
+    for _cl in S3 S5; do
+      if printf '%s' "$_t17" | grep -qF "$_cl"; then
+        sbad "case 17's truth claims $_cl, which the seeded code does not violate"
+      else
+        sok "case 17 leaves $_cl clean, so citing it scores as a real false positive"
+      fi
+    done
+  fi
+
+  # 3. The fixture must BUILD, and its diff must carry every seeded defect.
+  #    A fixture that fails to build writes an empty diff, every arm scores
+  #    zero, and the comparison is a tie between three nothings. Case 17 aborts
+  #    on that at runtime; this catches it with no live model and no tokens.
+  _hf="$(printf '%s' "$_s17" | sed -n '/^  HFIX="\$WORK\/hard"/,/^  ) >\/dev\/null 2>&1$/p')"
+  if [ -z "$_hf" ]; then
+    sbad "could not lift case 17's hard-fixture builder"
+  else
+    _hd="$(mktemp -d)"
+    ( WORK="$_hd"; eval "$_hf" ) >/dev/null 2>&1
+    _hdf="$_hd/seeded.diff"
+    ( cd "$_hd/hard" && git diff -W HEAD~1..HEAD ) > "$_hdf" 2>/dev/null
+    if ! grep -q '[^[:space:]]' "$_hdf" 2>/dev/null; then
+      sbad "case 17's hard fixture builds an EMPTY diff -- every arm would score zero"
+    else
+      sok "case 17's hard fixture builds and produces a non-empty seeded diff"
+      # Each seeded defect, identified by the line that carries it and named for
+      # the criterion it makes true. A fixture edit that drops one is caught
+      # here, by the id the ground truth still claims.
+      _seed_C1="-    throw new Error('refund exceeds invoice');"
+      _seed_S1="+  for (let i = 1; i < items.length; i++) {"
+      _seed_S2="+function purgeAll(userId) {"
+      _seed_S4="+  db.deleteRows(userId);"
+      _seed_S6="+  const n = s.uses;"
+      for _id in C1 S1 S2 S4 S6; do
+        eval "_pat=\"\$_seed_$_id\""
+        if grep -qF -- "$_pat" "$_hdf" 2>/dev/null; then
+          sok "case 17's diff carries the $_id defect its ground truth claims"
+        else
+          sbad "case 17's ground truth claims $_id but the seeded diff does not contain it"
+        fi
+      done
+      _nfl=$(grep -c '^diff --git' "$_hdf" 2>/dev/null || true)
+      if [ "${_nfl:-0}" -ge 3 ]; then
+        sok "case 17's defects are spread over $_nfl files, not concentrated in one function"
+      else
+        sbad "case 17's defects sit in ${_nfl:-0} file(s) -- a single enclosing-function ring sees them all"
+      fi
+    fi
+    rm -rf "$_hd"
+  fi
 fi
 
 # --- every audit must keep its OWN pre-gate array ----------------------------

@@ -102,14 +102,6 @@ JS
 cd "$FIX" || exit 1
 git diff -W HEAD~1..HEAD > "$WORK/diff.txt"
 
-# Pin the seeded-defect range NOW, by SHA, before any case commits on top of
-# $FIX. Cases 13 and 15 both add commits, so HEAD-relative names do not mean the
-# same thing depending on which cases ran -- and standalone they may not resolve
-# at all. Case 17 used `HEAD~2..HEAD~1`, which needs three commits where the
-# fixture has two: run as `--case 17` it died with "unknown revision", wrote an
-# EMPTY diff, and every arm audited nothing.
-SEED_BASE="$(git rev-parse HEAD~1)"
-SEED_HEAD="$(git rev-parse HEAD)"
 {
   printf 'C1\tAccounts must only be closed after confirmation\n'
   printf 'S1\tincorrect output or silently wrong result\n'
@@ -119,6 +111,13 @@ SEED_HEAD="$(git rev-parse HEAD)"
   printf 'S5\tunbounded resource consumption\n'
   printf 'S6\tconcurrency or ordering hazard\n'
 } > "$WORK/criteria.tsv"
+
+# The corpus audit() reads. Cases 12, 13 and 15 use the shared fixture above.
+# Case 17 points these at its own harder fixture instead of overwriting the
+# shared files, so hardening the falsifier's corpus cannot silently change what
+# the other three cases measure.
+CRIT_FILE="$WORK/criteria.tsv"
+DIFF_FILE="$WORK/diff.txt"
 
 # audit <out-file> <tier> [extra-instruction]
 # Runs one ganondorf and returns its GATED violations. The extra instruction is
@@ -137,10 +136,10 @@ audit() {
 $extra
 
 FROZEN CRITERIA:
-$(cat "$WORK/criteria.tsv")
+$(cat "$CRIT_FILE")
 
 MERGED DIFF (git diff -W):
-$(cat "$WORK/diff.txt")"
+$(cat "$DIFF_FILE")"
   raw=$(printf '%s' "$prompt" | hl_claude --plugin-dir "$ROOT" \
           --agent "ganondorf-t$tier" --allowedTools "")
   # Extraction MUST be range-oriented — see the note in clean-corpus.sh. A
@@ -162,7 +161,7 @@ $(cat "$WORK/diff.txt")"
   fi
   printf '%s' "$raw" | hl_first_block > "$pre"
   grep -q '[^[:space:]]' "$pre" 2>/dev/null || echo '[]' > "$pre"
-  bash "$GATE" --criteria "$WORK/criteria.tsv" --diff "$WORK/diff.txt" \
+  bash "$GATE" --criteria "$CRIT_FILE" --diff "$DIFF_FILE" \
        --violations "$pre" --tier "$tier" > "$out" 2>/dev/null
 }
 
@@ -403,9 +402,192 @@ fi
 # ============================================================================
 if want 17; then
   echo "case 17 — the one-round premise, against its own falsifier"
-  cd "$FIX" || exit 1
-  git diff -W "$SEED_BASE".."$SEED_HEAD" > "$WORK/diff.txt"   # seeded-defect diff, by SHA
-  if ! grep -q '[^[:space:]]' "$WORK/diff.txt" 2>/dev/null; then
+
+  # ---- case 17's OWN corpus -----------------------------------------------
+  # The shared fixture is a six-line function with three seeded defects, and on
+  # 2026-09-03 all three arms scored TP=3/3, FP=0, F1=1.000 on it. The reviewer
+  # saturates that corpus, so `b > a` was arithmetically unreachable and the
+  # falsifier had no power to falsify anything. Hardening the SHARED fixture
+  # would have changed what cases 12, 13 and 15 measure at the same time, so
+  # case 17 builds its own and those three are left untouched.
+  #
+  # Five defects spread thin across three files, scored against the SAME seven
+  # criteria, with S3 and S5 deliberately left CLEAN. That asymmetry is
+  # load-bearing. If every criterion were violated, truth would equal the
+  # criteria list, no citation could ever be a false positive, precision would
+  # be pinned at 1.000, and F1 would collapse to pure recall -- under which arm
+  # (b), a superset of arm (a) by construction, can only match or BEAT it. That
+  # rigs the experiment FOR falsification, the mirror image of the ceiling that
+  # rigged it against. Precision has to be able to fall, because the trade a
+  # second round really makes is more recall against more invention.
+  #
+  # The untouched code is kept deliberately boring for the same reason: an
+  # accidental sixth defect would score as a false positive and penalise
+  # whichever arm searched hardest.
+  HFIX="$WORK/hard"; mkdir -p "$HFIX/src"
+  (
+    cd "$HFIX" || exit 1
+    git init -q -b main; git config user.email t@e.com; git config user.name t
+
+    cat > src/session.js <<'JS'
+const store = require('./store');
+
+function createSession(user, token) {
+  store.put(user.id, { token: token, createdAt: Date.now() });
+  return { id: user.id };
+}
+
+function loadSession(id) {
+  return store.get(id);
+}
+
+function touchSession(id) {
+  const s = store.get(id);
+  store.put(id, { token: s.token, createdAt: s.createdAt, seenAt: Date.now() });
+}
+
+module.exports = { createSession, loadSession, touchSession };
+JS
+
+    cat > src/export.js <<'JS'
+const db = require('./db');
+
+function collect(userId) {
+  return db.find(userId);
+}
+
+function archiveRows(rows, opts) {
+  return db.archive(rows, opts);
+}
+
+function exportForUser(userId, opts) {
+  const rows = collect(userId);
+  return archiveRows(rows, opts);
+}
+
+module.exports = { collect, archiveRows, exportForUser };
+JS
+
+    cat > src/billing.js <<'JS'
+function lineTotal(item) {
+  return item.price * item.qty;
+}
+
+function invoiceTotal(items) {
+  let sum = 0;
+  for (let i = 0; i < items.length; i++) {
+    sum += lineTotal(items[i]);
+  }
+  return sum;
+}
+
+function applyRefund(invoice, amount) {
+  if (amount > invoice.total) {
+    throw new Error('refund exceeds invoice');
+  }
+  return invoice.total - amount;
+}
+
+module.exports = { lineTotal, invoiceTotal, applyRefund };
+JS
+
+    git add -A; git commit -qm base
+
+    # ---- the seeded commit: FIVE defects, over five of the seven criteria ---
+    cat > src/session.js <<'JS'
+const store = require('./store');
+
+function createSession(user, token) {
+  store.put(user.id, { token: token, createdAt: Date.now() });
+  return { id: user.id };
+}
+
+function loadSession(id) {
+  return store.get(id);
+}
+
+function touchSession(id) {
+  const s = store.get(id);
+  store.put(id, { token: s.token, createdAt: s.createdAt, seenAt: Date.now() });
+}
+
+function bumpUses(id) {
+  const s = store.get(id);
+  const n = s.uses;
+  store.put(id, { token: s.token, createdAt: s.createdAt, uses: n + 1 });
+}
+
+module.exports = { createSession, loadSession, touchSession, bumpUses };
+JS
+
+    cat > src/export.js <<'JS'
+const db = require('./db');
+
+function collect(userId) {
+  return db.find(userId);
+}
+
+function archiveRows(rows, opts) {
+  return db.archive(rows, opts);
+}
+
+function exportForUser(userId, opts) {
+  const rows = collect(userId);
+  db.deleteRows(userId);
+  return archiveRows(rows, opts);
+}
+
+function purgeAll(userId) {
+  db.deleteRows(userId);
+}
+
+module.exports = { collect, archiveRows, exportForUser, purgeAll };
+JS
+
+    cat > src/billing.js <<'JS'
+function lineTotal(item) {
+  return item.price * item.qty;
+}
+
+function invoiceTotal(items) {
+  let sum = 0;
+  for (let i = 1; i < items.length; i++) {
+    sum += lineTotal(items[i]);
+  }
+  return sum;
+}
+
+function applyRefund(invoice, amount) {
+  return invoice.total - amount;
+}
+
+module.exports = { lineTotal, invoiceTotal, applyRefund };
+JS
+
+    git commit -qam "add session bump, export purge helper, refund path"
+  ) >/dev/null 2>&1
+
+  cd "$HFIX" || exit 1
+  # Pin the seeded range by SHA. HEAD-relative names are what killed the old
+  # case 17: it read `HEAD~2..HEAD~1`, which needs three commits where that
+  # fixture had two, so standalone it died with "unknown revision", wrote an
+  # EMPTY diff, and every arm audited nothing.
+  HARD_BASE="$(git rev-parse HEAD~1)"
+  HARD_HEAD="$(git rev-parse HEAD)"
+  {
+    printf 'C1\tA refund must never exceed the invoice total\n'
+    printf 'S1\tincorrect output or silently wrong result\n'
+    printf 'S2\tdata loss or irreversible destruction\n'
+    printf 'S3\tsecurity exposure\n'
+    printf 'S4\tfailed or impossible rollback\n'
+    printf 'S5\tunbounded resource consumption\n'
+    printf 'S6\tconcurrency or ordering hazard\n'
+  } > "$WORK/hard-criteria.tsv"
+  git diff -W "$HARD_BASE".."$HARD_HEAD" > "$WORK/hard-diff.txt"
+  CRIT_FILE="$WORK/hard-criteria.tsv"
+  DIFF_FILE="$WORK/hard-diff.txt"
+
+  if ! grep -q '[^[:space:]]' "$DIFF_FILE" 2>/dev/null; then
     echo
     echo "  ABORT — case 17's seeded diff is EMPTY. Every arm would score zero and"
     echo "  the F1 comparison would be a tie between three nothings. THE FALSIFIER"
@@ -429,16 +611,30 @@ if want 17; then
   for i in $(seq 1 $K); do audit "$WORK/c$i.json" 2; crits "$WORK/c$i.json" >> "$WORK/c.txt"; done
   sort -u "$WORK/c.txt" > "$WORK/arm-c.txt"
 
-  # Ground truth for this fixture, judged from the CODE and nothing else:
-  #   C1  the confirmation guard was removed.
-  #   S2  db.purge is destructive and irreversible.
-  #   S4  purge runs BEFORE archive, so a failing archive leaves the rows
-  #       already deleted with nothing to roll back to.
-  # S4 was missing, and its absence scored a correct finding as a FALSE
-  # POSITIVE. That penalised whichever arm searched hardest -- arm (b), the one
-  # with an extra audit. Adding it makes falsification EASIER, not harder, so
-  # this correction cannot be read as protecting the premise.
-  printf 'C1\nS2\nS4\n' | sort > "$WORK/truth.txt"
+  # Ground truth for this corpus, judged from the CODE and nothing else. Five
+  # of the seven criteria are violated:
+  #
+  #   C1  applyRefund's `amount > invoice.total` guard was deleted, so a refund
+  #       can now exceed the invoice it refunds.
+  #   S1  invoiceTotal's loop starts at i = 1, silently dropping the first line
+  #       item out of every total it returns.
+  #   S2  exportForUser calls db.deleteRows BEFORE archiving, and purgeAll
+  #       deletes unconditionally. Both destroy rows irreversibly.
+  #   S4  the same ordering, read as rollback: if archiveRows throws, the rows
+  #       are already gone and there is nothing left to roll back to.
+  #   S6  bumpUses reads s.uses and writes n + 1 as two separate steps, so two
+  #       concurrent bumps lose an increment. exportForUser's delete-before-
+  #       archive ordering is legitimately citable here too.
+  #
+  # S3 and S5 are NOT violated, and a citation of either is a real false
+  # positive. That is deliberate -- see the corpus note above. Nothing in the
+  # untouched code is a defect, so precision can fall without punishing an arm
+  # merely for reading carefully.
+  #
+  # The previous fixture's truth omitted S4 and scored a correct finding as a
+  # false positive, penalising whichever arm searched hardest. Every criterion
+  # a careful reviewer can defend from this diff is in the set above.
+  printf 'C1\nS1\nS2\nS4\nS6\n' | sort > "$WORK/truth.txt"
 
   # score <arm-file> <label> -- prints the row, sets SCORE_F1.
   #
