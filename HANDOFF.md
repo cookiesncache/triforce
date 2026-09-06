@@ -102,8 +102,8 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 128 checks green, 5/5 suites, exit 0.
-                                         #   Verified at the committed tip, 2026-09-03.
+bash acceptance/run.sh                    # DONE — 152 checks green, 5/5 suites, exit 0.
+                                         #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
 bash acceptance/probe-harness.sh          # 6/6 + 1 UNMEASURED, PROBE_EXIT=0 (2026-09-06)
@@ -116,12 +116,12 @@ bash acceptance/live-cases.sh --case 12   # FAILED — 2026-09-03, on the CORREC
 bash acceptance/live-cases.sh --case 13   # PASSED — 2026-09-03, drift=0, verifier enum clean.
                                          #   Its FIRST pass that day was VACUOUS (empty round-2
                                          #   diff); fixture fixed, this is the real one. n=1.
-bash acceptance/live-cases.sh --case 15   # UNMEASURABLE AS SPECIFIED — 2026-09-06. Still
-                                         #   floor=0 vs no-floor=0 on a corpus 8x larger, so
-                                         #   "the corpus was too small" is DEAD. The ablation
-                                         #   injects a floor into the PROMPT while the agent's
-                                         #   own contract forbids floors. Read its section:
-                                         #   re-running it as-is cannot produce a result.
+bash acceptance/live-cases.sh --case 15   # PASSED — 2026-09-06, n=4, on a REAL ablation.
+                                         #   no-floor=0 in 4/4 runs; floor=1,1,1,2. The floor
+                                         #   manufactures false positives on a clean diff, and
+                                         #   pre-gate == post-gate every time, so THE GATE DOES
+                                         #   NOT REMOVE THEM. Cause A confirmed. The earlier
+                                         #   "inconclusive" was an untreated arm; see below.
 bash acceptance/live-cases.sh --case 17   # NOT FALSIFIED — 2026-09-06, on a HARDER corpus,
                                          #   n=3. All arms F1=0.889, a TIE, not a win for (a).
                                          #   The ceiling is gone: (a) missed a criterion, so
@@ -346,6 +346,42 @@ definition**, then run that variant against the same clean diff — one changed 
 the instruction actually lives. It must be built in a THROWAWAY plugin copy: INVARIANT 1 says no
 finding floor anywhere in the shipped plugin, and building the counterfactual you measure against
 is not the same as shipping it.
+
+### That ablation was built, and Cause A is confirmed — n=4 (2026-09-06)
+
+The floor arm now loads a patched contract from a throwaway plugin copy under `$WORK`, removed on
+exit. Four runs against the same clean diff:
+
+```
+run 1   no-floor=0   floor=1        (pre-gate identical to post-gate)
+run 2   no-floor=0   floor=1
+run 3   no-floor=0   floor=1
+run 4   no-floor=0   floor=2
+```
+
+**4/4, no overlap between the arms.** A genuinely clean diff returns zero findings under the
+shipped contract and 1–2 findings under a contract carrying a floor. Those are manufactured false
+positives, and **floor removal is the mechanism for Cause A.**
+
+**The most consequential number here is that pre-gate equals post-gate in every run.** This file
+previously contemplated "the floor manufactured findings and the GATE removed them" as a possible
+branch. Measured, it does not: every manufactured finding survived gating. **The gate is not a
+backstop for floor-induced false positives** — expected, since `SAFETY = {S1..S6}` is cap-exempt,
+but now measured rather than assumed. Removing the floor is not one of two redundant defences; it
+is the only one.
+
+**Read the effect size honestly.** The floor demanded *at least 3* and got 1 or 2. The reviewer
+partially resists a floor even when the floor is in its own contract, so the treatment is not
+fully potent and the measured 1–2 is a floor on the harm, not a ceiling. And the treatment was the
+**whole Anti-fabrication section**, not one sentence — replacing only "there is no minimum number
+of findings" leaves "generating a candidate you cannot ground in the diff is the single worst
+outcome available to you" standing, which is the same instruction in different words, and the arm
+would read as treated while still being a control. Two hunks, both verified before any audit runs.
+
+**What made the earlier result wrong was not the corpus.** Enlarging the clean diff eightfold
+changed nothing, because the arm was never treated. Keep that in view when reading any future
+tie: this case has now produced an uninformative tie twice, for two different reasons, and neither
+was about finding floors.
 
 ### Case 12's FAIL is VOID — it counted the wrong population (harness fixed 2026-09-03)
 
@@ -811,14 +847,25 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **128** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **152** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
   floor text, + 9 guarding the falsifier's ability to falsify, including a three-way
   test that drives its verdict chain to every outcome, + 3 guarding per-call pre-gate
-  retention, + 6 guarding the headless transport against the Stop-hook defect),
-  offline, currently green. Keep it green.
+  retention, + 6 guarding the headless transport against the Stop-hook defect,
+  + 12 guarding case 17's corpus — the fixture is BUILT and each seeded defect matched
+  against the ground truth that claims it, truth is checked to be a PROPER subset of the
+  criteria, and the verdict chain is driven to a tie below the ceiling,
+  + 4 guarding case 6's fixture and its proof that work existed before an absent worktree
+  is read as a defect,
+  + 5 guarding case 15's ablation, including the contract patch LIFTED AND RUN against
+  the real agent file, because a treatment that silently stops applying is indistinguishable
+  from a null result), offline, currently green. Keep it green.
+
+  Every check added on 2026-09-06 was probed for vacuity by breaking the thing it guards.
+  A green that could not have been red is worth nothing, and this file has already
+  retracted one number for exactly that reason.
 - Installed as `triforce@cookiesncache-marketplace`, **~694 tokens always-on** (the recorded baseline).
 
 ## Definition of done — current state
