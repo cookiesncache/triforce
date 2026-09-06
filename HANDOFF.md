@@ -134,6 +134,46 @@ Then, still to be **built**, not just run:
 4. **Case 16**, effective false positives over rolling windows — genuinely cannot be done yet; it
    needs production audits to accumulate.
 
+### Case 11 re-measured on the fixed transport — 2026-09-06
+
+```
+  clean-return rate, under-50-LOC band : 12/12  (100%)
+  clean-return rate, all audited bands : 29/32  (90%)
+  PASS — at or above the 70% bar.
+```
+
+Row tally: PASS=29  FINDINGS=3  UNREVIEWABLE=0  SKIPPED=8 (T0, counted in neither direction).
+
+**What this establishes, and what it cannot.** The transport fix is transport-only and cannot
+inflate a result -- it can only stop one being discarded. But this run **changed the transport
+AND re-drew the corpus sample at the same time**, so any difference from the 2026-09-02 figure
+is confounded by construction: a different draw of django commits would move the number on its
+own. Read it as a fresh measurement on a working instrument, not as a delta against the old one,
+and do not subtract the two.
+
+**UNREVIEWABLE is the row that matters here.** It is the shape the Stop-hook defect produced, and
+`clean-corpus.sh` counts it against the rate. Its count above is the evidence for or against the
+hypothesis that the two rows recorded on 2026-09-02 (`1d50f129`, `febefb17`) were that defect.
+Zero is consistent with the hypothesis; it is not proof, because those rows were always a
+minority of a batch.
+
+**100% in the headline band is the same shape as a number this file already retracted.** Treat
+it with suspicion first. The retracted figure was **32/32 across all bands with zero findings
+anywhere** -- degenerate, caused by the extraction defect scoring every audit as empty. This run
+is not that:
+
+- Three genuine `FINDINGS` rows survived the gate (`0398417c` 2, `d2e59b77` 2, `260d1369` 1), so
+  the pipeline demonstrably still produces findings. A degenerate run cannot.
+- All three sit at 123, 699 and 284 LOC -- **none in the under-50 band**. The small band reading
+  12/12 is therefore consistent with small commits simply violating less, not with a reviewer
+  that finds nothing.
+- The all-bands rate is 29/32 (90%), not 100%.
+
+**But do not report "100%" as the headline.** With `SMALL_TOTAL=12`, one audit is worth 8 points:
+12/12 and 11/12 are one row apart and well inside the noise this metric carries. The honest
+statement is "clears the 70% bar with room, on a 12-row band", which was already true at 91%.
+The bar is what the design turns on, and the bar is cleared either way.
+
 ### THE HEADLESS TRANSPORT WAS DISCARDING AUDITS (found and fixed 2026-09-06)
 
 **This plugin's own Stop hook was corrupting this plugin's own measurements.**
