@@ -211,6 +211,41 @@ for v in (d if isinstance(d, list) else []):
 ' "$1" 2>/dev/null | tr -d '\r'
 }
 
+# cite <criterion_id> <gated.json...> -- the first matching entry, rendered as
+# "file:line -- summary".
+#
+# Case 17's false positives were uninterpretable without this. On django host
+# f30acb18 the FP in 2 of 3 runs was C1 -- the HOST COMMIT'S OWN SUBJECT -- and
+# "FP=1" cannot say whether the reviewer invented something or made a defensible
+# call about the seeded code. Precision drives every F1 gap between the arms
+# once FPs exist, so an unreadable FP makes the whole comparison unreadable.
+#
+# If those citations turn out defensible, the truth set is penalising whichever
+# arm searched hardest, which is the bias this corpus was built to avoid.
+cite() {
+  local id="$1"; shift
+  [ -n "$PY" ] || return 0
+  "$PY" -c '
+import json, sys
+want = sys.argv[1]
+for path in sys.argv[2:]:
+    try:
+        d = json.load(open(path))
+    except Exception:
+        continue
+    if isinstance(d, dict):
+        for v in d.values():
+            if isinstance(v, list):
+                d = v
+                break
+    for v in (d if isinstance(d, list) else []):
+        if isinstance(v, dict) and v.get("criterion_id") == want:
+            txt = v.get("short_summary") or v.get("summary") or v.get("cited_text") or ""
+            print("%s:%s -- %s" % (v.get("file", ""), v.get("line", ""), txt))
+            sys.exit(0)
+' "$id" "$@" 2>/dev/null | tr -d '\r'
+}
+
 # Find an interpreter that actually RUNS -- the same probe as gate.sh, for the
 # same reason: on Windows `python3` is often a Store alias stub that exists on
 # PATH and fails on execution.
@@ -1171,17 +1206,37 @@ JS
   # If those citations are defensible, the truth set is penalising whichever arm
   # searched hardest, which is the bias this corpus was built to avoid. Printing
   # the ids is the minimum; a future run should retain the citation text.
-  for _arm in a b c; do
+  for _arm in a b c d; do
+    [ -f "$WORK/arm-$_arm.txt" ] || : > "$WORK/arm-$_arm.txt"
     comm -23 "$WORK/arm-$_arm.txt" "$WORK/truth.txt" > "$WORK/fp-$_arm.txt"
   done
-  if grep -q '[^[:space:]]' "$WORK/fp-a.txt" "$WORK/fp-b.txt" "$WORK/fp-c.txt" 2>/dev/null; then
-    printf '        FALSE POSITIVES — (a): %s | (b): %s | (c): %s\n' \
+  if grep -q '[^[:space:]]' "$WORK/fp-a.txt" "$WORK/fp-b.txt" "$WORK/fp-c.txt" "$WORK/fp-d.txt" 2>/dev/null; then
+    printf '        FALSE POSITIVES — (a): %s | (b): %s | (c): %s | (d): %s\n' \
       "$(tr '\n' ' ' < "$WORK/fp-a.txt")" \
       "$(tr '\n' ' ' < "$WORK/fp-b.txt")" \
-      "$(tr '\n' ' ' < "$WORK/fp-c.txt")"
+      "$(tr '\n' ' ' < "$WORK/fp-c.txt")" \
+      "$(tr '\n' ' ' < "$WORK/fp-d.txt")"
     echo "        These drive the precision term, so they drive the F1 gaps. An id"
-    echo "        alone does not establish a citation was WRONG — check it before"
-    echo "        reading a low-precision arm as an inventing one."
+    echo "        alone does not establish a citation was WRONG, so each is printed"
+    echo "        with what it actually cited — judge it before reading a"
+    echo "        low-precision arm as an inventing one."
+    _afiles=""; _cfiles=""
+    for i in $(seq 1 $K); do
+      _afiles="$_afiles $WORK/a$i.json"; _cfiles="$_cfiles $WORK/c$i.json"
+    done
+    for _arm in a b c d; do
+      case "$_arm" in
+        a) _src="$_afiles" ;;
+        b) _src="$_afiles $WORK/b-extra.json" ;;
+        c) _src="$_cfiles" ;;
+        d) _src="$WORK/d1.json" ;;
+      esac
+      while IFS= read -r _fpid; do
+        [ -n "$_fpid" ] || continue
+        # shellcheck disable=SC2086
+        printf '          (%s) %-4s %s\n' "$_arm" "$_fpid" "$(cite "$_fpid" $_src)"
+      done < "$WORK/fp-$_arm.txt"
+    done
   fi
   if grep -q '[^[:space:]]' "$WORK/missed.txt" 2>/dev/null; then
     printf '        in truth, reached by NO arm: %s\n' "$(tr '\n' ' ' < "$WORK/missed.txt")"

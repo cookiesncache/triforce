@@ -777,6 +777,14 @@ else
   else
     sbad "case 17 reports FP counts alone -- an inventing arm cannot be told from an unfair truth set"
   fi
+  # Naming an id is not enough either. Whether a citation was WRONG needs what it
+  # actually cited: on django host f30acb18 the FP in 2 of 3 runs was C1, the host
+  # commit's OWN SUBJECT, and precision drives every F1 gap once FPs exist.
+  if printf '%s' "$_l17" | grep -qF 'cite "$_fpid"'; then
+    sok "case 17 prints what each false positive actually cited, not only its id"
+  else
+    sbad "case 17's false positives cannot be judged -- it prints ids with no citation text"
+  fi
 
   # ---- arm (d), the revision round ---------------------------------------
   # Deferred until its gate opened: its only mechanism (c) lacks is removing a
