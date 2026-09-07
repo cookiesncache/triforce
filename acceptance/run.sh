@@ -346,6 +346,22 @@ else
   sbad "probe-harness has no guard against a vacuous case 3"
 fi
 
+# "claude is missing" and "claude refused" are different non-executions, and a
+# harness that answers both with "/login" sends the reader to fix the wrong
+# thing. That cost a real round trip on 2026-09-06: PowerShell's `bash` is WSL
+# (C:\WINDOWS\system32ash.exe), claude.exe is not on WSL's PATH, `timeout`
+# reported "failed to execute process", and the harness said to authenticate --
+# while the credentials were a separate, genuinely expired matter in a different
+# shell. Both are UNMEASURED under INVARIANT 10; only one is fixed by /login.
+for _h in acceptance/live-cases.sh acceptance/probe-harness.sh acceptance/clean-corpus.sh; do
+  _hn="$(basename "$_h")"
+  if grep -q 'command -v claude' "$_h" 2>/dev/null      && grep -q 'NOT an authentication problem' "$_h" 2>/dev/null; then
+    sok "$_hn separates 'claude not on PATH' from 'claude not authenticated'"
+  else
+    sbad "$_hn answers a missing claude with /login, which cannot fix it"
+  fi
+done
+
 # A NON-EXECUTION IS NOT A DEFECT. Both live cases in probe-harness dispatch an
 # agent that can decline, be sandbox-refused, or crash. Case 3 once reported
 # "executors are building on the DEFAULT BRANCH" because a compound command was

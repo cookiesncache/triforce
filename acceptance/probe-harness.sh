@@ -25,14 +25,53 @@ bad() { printf '  FAIL  %s\n' "$1"; FAIL=$((FAIL+1)); }
 echo "triforce probe harness (live model required)"
 echo
 
-# --- auth gate --------------------------------------------------------------
+# --- usability gate ---------------------------------------------------------
+# TWO FAILURES LIVE HERE AND THEY ARE NOT THE SAME. This gate used to answer
+# both with "Authenticate an interactive session first (/login)", which is a
+# misdiagnosis whenever `claude` simply is not on PATH -- and that cost a real
+# round trip on 2026-09-06.
+#
+#   NOT FOUND       PowerShell's `bash` is C:\WINDOWS\system32\bash.exe, which
+#                   is WSL. claude.exe lives under the Windows profile and is
+#                   not on WSL's PATH, so `timeout` reports "failed to execute
+#                   process: No such file or directory". Nothing is wrong with
+#                   the credentials. Run this from GIT BASH instead. Adding the
+#                   Windows directory to WSL's PATH does NOT fix it: claude.exe
+#                   cannot resolve /mnt/c/... paths.
+#   NOT AUTHORISED  claude ran and refused. Git Bash says "Not logged in";
+#                   PowerShell says "OAuth session expired and could not be
+#                   refreshed". The second is the true diagnosis, and /login is
+#                   the fix.
+#
+# Both are non-executions, and INVARIANT 10 makes them UNMEASURED either way --
+# but a harness that names the wrong cause sends the reader to fix the wrong
+# thing, which is its own kind of false report.
+if ! command -v claude >/dev/null 2>&1; then
+  echo "  CANNOT RUN: 'claude' is not on PATH in this shell."
+  echo "  This is NOT an authentication problem."
+  echo "  uname=$(uname -s 2>/dev/null || echo unknown)"
+  echo
+  echo "  If you launched this from PowerShell, its 'bash' is WSL"
+  echo "  (C:\\WINDOWS\\system32\\bash.exe) and claude.exe is not on WSL's PATH."
+  echo "  Run it from Git Bash instead:"
+  echo "    & 'C:\\Program Files\\Git\\bin\\bash.exe' -lc 'cd /c/Users/simsc/Documents/Claude/Code/repos/triforce && bash acceptance/probe-harness.sh'"
+  echo
+  echo "Cases 2-6 are UNMEASURED, not passing."
+  exit 2
+fi
 probe=$(timeout 90 claude -p "Reply with exactly: READY" --model haiku 2>&1)
 if ! printf '%s' "$probe" | grep -q "READY"; then
   echo "  CANNOT RUN: headless claude is not usable here."
   echo "  got: $(printf '%s' "$probe" | head -2)"
   echo
-  echo "  Authenticate an interactive session first (/login), then re-run."
-  echo "  Reporting these cases as SKIPPED, not passed."
+  case "$probe" in
+    *"No such file or directory"*|*"not found"*|*"cannot execute"*)
+      echo "  That is an EXECUTION failure, not an auth failure -- 'timeout' found"
+      echo "  no claude to run. Re-read the shell note above; /login will not help." ;;
+    *)
+      echo "  Authenticate an interactive session first (/login), then re-run." ;;
+  esac
+  echo "  Cases 2-6 are UNMEASURED, not passing."
   exit 2
 fi
 ok "headless claude responds"
