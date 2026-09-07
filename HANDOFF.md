@@ -77,6 +77,23 @@ Nothing outstanding is blocked on missing code. All three blockers were environm
 and **as of 2026-09-02 all three are CLEARED** on CLI **2.1.258**. The table is kept
 because the symptoms recur and are each mistakable for something else.
 
+**"Cleared" means fixable, not fixed-forever. Auth expired again mid-session on 2026-09-06**,
+between one set of live runs and the next, and killed three dispatches. Two things about it are
+worth having written down:
+
+- **The credential file had NO refresh token** (`claudeAiOauth.refreshToken` absent), which is
+  precisely why the message is *"OAuth session expired and could not be refreshed"*. There is
+  nothing to refresh with, so the session cannot self-heal and waiting does not help. `/login` in
+  an interactive session is the only fix.
+- **It presents differently depending on the shell, and one presentation is not an auth failure at
+  all.** PowerShell's `bash` is `C:\WINDOWS\system32\bash.exe` — **WSL** — where `claude.exe` is not
+  on PATH, so `timeout` reports *"failed to execute process: No such file or directory"*. That is a
+  missing binary, not a missing credential, and `/login` cannot fix it. Adding the Windows directory
+  to WSL's PATH does not fix it either: `claude.exe` cannot resolve `/mnt/c/...` paths. **Run the
+  harnesses from Git Bash.** Both conditions were true simultaneously on 2026-09-06 — WSL could not
+  find claude, and Git Bash found it but was unauthenticated — which is exactly how this wastes an
+  hour. All three harnesses now diagnose the two separately.
+
 | Blocker | Gates | Status |
 |---|---|---|
 | **No authenticated `claude -p`** — reports "Not logged in" even with valid credentials on disk | cases 2–6, 11, 12, 13, 15, 17, the plan-gate A/B, the end-to-end run | **CLEARED.** Probe returns `READY` |
