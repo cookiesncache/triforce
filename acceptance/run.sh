@@ -349,7 +349,7 @@ fi
 # "claude is missing" and "claude refused" are different non-executions, and a
 # harness that answers both with "/login" sends the reader to fix the wrong
 # thing. That cost a real round trip on 2026-09-06: PowerShell's `bash` is WSL
-# (C:\WINDOWS\system32ash.exe), claude.exe is not on WSL's PATH, `timeout`
+# (C:\WINDOWS\system32\bash.exe), claude.exe is not on WSL's PATH, `timeout`
 # reported "failed to execute process", and the harness said to authenticate --
 # while the credentials were a separate, genuinely expired matter in a different
 # shell. Both are UNMEASURED under INVARIANT 10; only one is fixed by /login.
