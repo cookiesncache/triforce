@@ -1207,10 +1207,12 @@ JS
   TPD="$SCORE_TP"; FPD="$SCORE_FP"
   echo "        arm (c) chains: round n+1 is told what round n cited and asked"
   echo "        for what it missed, with an explicit empty-array escape so the"
-  echo "        instruction is not a finding floor. Arm (d) — a round that may"
-  echo "        WITHDRAW an earlier finding — is deliberately not built: it would"
-  echo "        change authority as well as chaining, and every run so far has"
-  echo "        scored FP=0, so it would have nothing to withdraw."
+  echo "        instruction is not a finding floor. Arm (d) is a REVISION round:"
+  echo "        it may drop an earlier finding as well as add one, and its score"
+  echo "        is that round's output ALONE, so a withdrawal is observable."
+  echo "        (c) and (d) stay separate arms because (d) changes authority as"
+  echo "        well as chaining, and one combined change would not say which"
+  echo "        half of it moved the result."
 
   # WHICH criteria each arm cited, and which the reviewer never reached.
   # Without this the F1 column is uninterpretable. A three-way tie at the same

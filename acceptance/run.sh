@@ -841,6 +841,27 @@ else
     sbad "arm (d) is absent although its gate condition (false positives to withdraw) is met"
   fi
 
+  # A HARNESS MUST NOT CONTRADICT ITSELF IN ITS OWN OUTPUT.
+  #
+  # Case 17 printed arm (d)'s score row and, four lines later, "Arm (d) ... is
+  # deliberately not built". Both were written honestly, months apart in
+  # editing terms: the note was true when arm (c) became sequential and went
+  # stale the moment (d) was built. A reader has no way to tell which half of a
+  # self-contradicting report to believe, and the offline suite could not see it
+  # because every check tested code, not the prose beside it.
+  # Matched against the COMMENT-STRIPPED text, and not per-line: the stale
+  # sentence spanned two echo lines ("Arm (d) — a round that may" / "WITHDRAW an
+  # earlier finding — is deliberately not built"), so a single-line pattern saw
+  # nothing and the first version of this check passed on the very text it was
+  # written to catch. It was only caught by running it against the stale file.
+  if printf '%s' "$_l17" | grep -qF 'arm-d.txt'; then
+    if printf '%s' "$_l17" | grep -qE 'not built|deliberately not'; then
+      sbad "case 17 prints arm (d)'s score AND says arm (d) is not built -- the output contradicts itself"
+    else
+      sok "case 17's prose about arm (d) matches the arm it actually runs"
+    fi
+  fi
+
   # ---- the verdict must be able to see the sequential arm ----------------
   # The falsifier clause names arm (b), and the verdict chain implements it
   # unchanged. But arm (c) only became a real arm on 2026-09-06 -- until then it
@@ -1185,16 +1206,23 @@ echo "  checks: $CHECKS"
 
 # The README carries this number, and only this number. Verify it rather than
 # trusting it: it was wrong by 89 before anyone noticed.
+# HANDOFF is checked too, and it matters MORE: it is the declared source of
+# truth for a cold session. It sat at 174 while the suite ran 179, because the
+# first version of this check guarded only the README.
 _rmc=$(grep -oE '\*\*[0-9]+ checks green\*\*' README.md 2>/dev/null | grep -oE '[0-9]+' | head -1)
-if [ -z "$_rmc" ]; then
-  echo "  FAIL  README states no check count — the one figure it carries must be checkable"
-  SUITES=$((SUITES + 1))
-elif [ "$_rmc" -ne "$CHECKS" ]; then
-  echo "  FAIL  README says $_rmc checks; the suite runs $CHECKS. Update README.md."
-  SUITES=$((SUITES + 1))
-else
-  echo "  ok    README's check count matches the suite ($CHECKS)"
-fi
+_hoc=$(grep -oE '\*\*[0-9]+\*\* checks' HANDOFF.md 2>/dev/null | grep -oE '[0-9]+' | head -1)
+for _pair in "README.md:$_rmc" "HANDOFF.md:$_hoc"; do
+  _f="${_pair%%:*}"; _n="${_pair##*:}"
+  if [ -z "$_n" ]; then
+    echo "  FAIL  $_f states no check count — the one figure it carries must be checkable"
+    SUITES=$((SUITES + 1))
+  elif [ "$_n" -ne "$CHECKS" ]; then
+    echo "  FAIL  $_f says $_n checks; the suite runs $CHECKS. Update $_f."
+    SUITES=$((SUITES + 1))
+  else
+    echo "  ok    $_f's check count matches the suite ($CHECKS)"
+  fi
+done
 echo
 echo "  DEFERRED — not run, and NOT counted as passing:"
 for d in "${DEFERRED[@]}"; do

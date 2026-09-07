@@ -172,11 +172,11 @@ Everything below is either a number or an honest blank. Nothing deferred is repo
 Installs from the pinned SHA and loads with its full inventory — 6 agents, 2 skills, 1 hook —
 at a projected **~694 tokens always-on**, recorded here as the baseline for future comparison.
 
-`bash acceptance/run.sh` — **178 checks green**:
+`bash acceptance/run.sh` — **179 checks green**:
 
 | Suite | Checks | Covers |
 |---|---|---|
-| static | 120 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no `xhigh` effort, tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures — plus the measurement harnesses themselves: the headless transport against the Stop-hook defect, every corpus built and each seeded defect matched to the criterion claiming it, ground truth held to a proper subset of the criteria, the falsifier's verdict chain driven to every outcome, and each harness telling a missing `claude` apart from an unauthenticated one |
+| static | 121 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no `xhigh` effort, tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures — plus the measurement harnesses themselves: the headless transport against the Stop-hook defect, every corpus built and each seeded defect matched to the criterion claiming it, ground truth held to a proper subset of the criteria, the falsifier's verdict chain driven to every outcome, and each harness telling a missing `claude` apart from an unauthenticated one |
 | risk score | 7 | additive scoring, categorical floors, T0 content class. Includes a 4-line auth-guard removal reaching **T3** — the case a multiplicative score zeroes out |
 | preflight | 10 | case 1: `baseRef` unset/`fresh` **blocks**, `CLAUDE_CODE_SUBAGENT_MODEL` blocks, version read from the binary |
 | ledger | 31 | cases 8 + 9: caps hold at 4/6/9, counters monotone under every command sequence, dedup on `seen`, and `UNRESOLVED` escalating to a human on the third |

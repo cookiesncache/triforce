@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 174 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 179 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -691,6 +691,60 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### Arm (d) ran, both falsification branches fired — and the result is CONTAMINATED (2026-09-06)
+
+Three runs, two hosts. Arm (d) is the revision round: it may drop a finding as well as add one, and
+its score is that round's output alone.
+
+```
+host       run   (a)     (b)     (c)     (d)     (d) dropped from (a)
+f30acb18    A    0.667   0.667   0.800   0.857   [C1 S3]  added []
+f30acb18    B    0.750   0.750   0.750   0.750   [C1]     added [S3]
+804660d6    C    1.000   1.000   0.857   1.000   []       added []   <- ceiling, refused
+```
+
+**Arm (d) does what it was built to do.** In run A it dropped exactly the two false positives and
+came back FP=0 — the only arm that can raise precision, doing so. Run C withdrew nothing and said
+so, so its F1 is not evidence about withdrawal in either direction. The guards work.
+
+**Both falsification branches fired for the first time**, in run A:
+
+```
+  FAIL  FALSIFIED BY THE SEQUENTIAL ARM: (c) F1=0.800 beats (a) F1=0.667.
+  FAIL  FALSIFIED BY THE REVISION ARM:   (d) F1=0.857 beats (a) F1=0.667.
+```
+
+**DO NOT REPORT THAT AS A FALSIFICATION.** The citation text — printed for the first time on this
+run, and built precisely for this — says the false positives are probably not false:
+
+```
+  (a) C1  django/contrib/admin/templatetags/admin_modify.py:158 -- extra positional arg breaks change-form actions tag
+  (a) S3  django/contrib/admin/options.py:2087 -- Change-form action queryset bypasses get_queryset scope
+```
+
+Those are claims about **django's own code**, cited at consistent line numbers across every arm and
+every run. They are not obviously wrong, and if they are right they are TRUE POSITIVES scored as
+false ones. Arm (d) then "won" by **dropping correct findings**, which is a false-negative win, and
+arm (c) "won" partly on the same scoring.
+
+**The host-verification guard was insufficient, and that is my error.** `dbase.sh` audited
+`git diff -W SHA^..SHA -- '*.py'` — every python file including tests, with no seeded defects. Case
+17 audits a **different diff**: library files only, with four defects appended. A clean result on
+the superset does not certify the subset, and the seeded code changes how the reviewer reads the
+whole diff. The guard checked the wrong artifact and it was recorded as if it checked the right one.
+
+**Required before any of these numbers mean anything:**
+
+1. Re-baseline each host on the **exact diff case 17 audits** — same file set, same base, seeded
+   defects included — not a superset.
+2. If `C1` at `admin_modify.py:158` survives that, the host is disqualified, or `C1` belongs in the
+   ground truth. Either way the F1 column above is recomputed, not annotated.
+3. Only then re-read whether (c) or (d) beat (a).
+
+Run B is the control that makes the point: everything ties at 0.750 there, and (d) dropped `C1`
+only to add `S3`. One run falsifies, one shows nothing, one is a ceiling. **n=3 across two hosts,
+with a truth set now known to be suspect, is not a result.**
+
 ### Case 17 on the django corpus — the premise is NOT falsified (2026-09-06, n=3)
 
 The first corpus on which the comparison had power. Three runs, two hosts:
@@ -1036,7 +1090,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **174** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **179** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
