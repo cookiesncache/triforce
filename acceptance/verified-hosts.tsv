@@ -1,0 +1,8 @@
+# Host verification for case 17 --corpus django. Data rows are written ONLY
+# by --verify-host, and accumulate: runs sum, citations union, DIRTY is sticky.
+# A "#!DQ" line is a HUMAN disqualification. It outranks any verdict and no
+# run clears it -- verification cannot see a finding that needs the seeds.
+# sha	verdict	runs	cited	date	fixture range (throwaway repo, NOT django shas)
+804660d685a5abd49fc66ba20c98d1a523f28f9f	CLEAN	3	-	2026-09-07	5f980aac4f59fc31eb2218f1d7c5907548b4045e..f0ec145e284ea9c27cea9966fe49f195f2649453
+f30acb184f75fd9260cfd6ddc48a3bbbd49f9c1d	DIRTY	3	C1	2026-09-07	a3dcfe2edf3a0b42c40ee797f6efe3b1c262a7b1..4f89adcb51cf2050be1f112031c82458d68471ba
+#!DQ	f30acb184f75fd9260cfd6ddc48a3bbbd49f9c1d	its own diff violates S3 -- options.py:2108 builds the change-form action queryset from _default_manager, bypassing ModelAdmin.get_queryset(), then filters pk__in on pks from POST; the changelist path passes cl.get_queryset(request) instead. Truth set {S1 S2 S4 S6} scores that correct finding as a false positive, so no F1 from this host is readable. Adjudicated by reading django 2026-09-07; see HANDOFF.md. Requalify only by overturning that reading.

@@ -45,16 +45,55 @@ CORPUS_REPO="$ROOT"
 # the note in case 17.
 CORPUS="hard"
 DJ_HOST=""
+# --verify-host: the evidence case 17's django corpus was always assuming.
+#
+# That corpus scores every citation outside {S1 S2 S4 S6} as a false positive,
+# which is only sound if the reviewer returns CLEAN on the host commit's own
+# change. The first attempt at that guard audited `git diff SHA^..SHA -- *.py`
+# -- every python file, tests included, no seeds -- while case 17 audits
+# library files only WITH seeds appended. A clean result on a superset does not
+# certify the subset, and the guard was recorded as if it did. This mode audits
+# the EXACT diff case 17 audits, minus the seeded commit, through the same
+# audit(), the same criteria file and the same tier.
+VERIFY_HOST=0
+RUNS=3
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --case) ONLY="$2"; shift 2 ;;
-    --repo) CORPUS_REPO="$2"; shift 2 ;;
+    # ABSOLUTISED IMMEDIATELY. The shared fixture cds into a temp dir before
+    # case 17 runs, so a relative --repo resolves against THAT and the corpus
+    # check reports "'../django' is not a git repository" -- true where it
+    # looked, and the wrong cause to hand a reader. Same class of misdiagnosis
+    # as answering a missing `claude` with /login.
+    --repo)
+      if [ -d "$2" ]; then CORPUS_REPO="$(cd "$2" && pwd)"; else CORPUS_REPO="$2"; fi
+      shift 2 ;;
     --corpus) CORPUS="$2"; shift 2 ;;
     --host) DJ_HOST="$2"; shift 2 ;;
+    --verify-host) VERIFY_HOST=1; shift ;;
+    --runs) RUNS="$2"; shift 2 ;;
     *) echo "live-cases: unknown argument $1" >&2; exit 2 ;;
   esac
 done
+
+# A ZERO-RUN VERIFICATION WOULD PASS. `seq 1 0` is empty, so the loop below
+# would audit nothing, cite nothing, and report the host CLEAN -- a green that
+# could not have been red, certifying a corpus nobody looked at.
+case "$RUNS" in
+  ''|*[!0-9]*) echo "live-cases: --runs needs a positive integer, got '$RUNS'." >&2; exit 2 ;;
+esac
+if [ "$RUNS" -lt 1 ]; then
+  echo "live-cases: --runs must be at least 1. A verification that audits nothing" >&2
+  echo "would report the host clean without looking at it." >&2
+  exit 2
+fi
+
+if [ "$VERIFY_HOST" = 1 ] && [ "$CORPUS" != "django" ]; then
+  echo "live-cases: --verify-host only means something with --corpus django." >&2
+  echo "The 'hard' corpus has no host -- its diff is seeded defects and nothing else." >&2
+  exit 2
+fi
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -749,7 +788,7 @@ if want 17; then
     [ -d "$CORPUS_REPO/.git" ] || {
       echo
       echo "  UNMEASURED  case 17: --corpus django needs --repo <django clone>."
-      echo "  Got '$CORPUS_REPO', which is not a git repository."
+      echo "  Resolved '$CORPUS_REPO', which has no .git directory."
       exit 2
     }
     [ -n "$DJ_HOST" ] || {
@@ -758,6 +797,59 @@ if want 17; then
       echo "  must be a commit the reviewer returns CLEAN on unseeded."
       exit 2
     }
+    # THE HOST REQUIREMENT IS ENFORCED, NOT WRITTEN DOWN.
+    #
+    # It was prose for three days -- "THE HOST COMMIT MUST BE ONE THE REVIEWER
+    # RETURNS CLEAN ON, unseeded" -- and prose does not stop a run. Two of the
+    # three django runs used f30acb18, including the only one that fired the
+    # falsifier, and nobody had checked it. A comment cannot notice that. The
+    # allowlist can only be written by a --verify-host run, so the evidence and
+    # the permission are the same artifact.
+    VHOSTS="$ROOT/acceptance/verified-hosts.tsv"
+    DJ_SHA="$(cd "$CORPUS_REPO" && git rev-parse "$DJ_HOST" 2>/dev/null)"
+    if [ "$VERIFY_HOST" != 1 ]; then
+      # A DISQUALIFICATION OUTRANKS A VERDICT, and no run can clear one.
+      #
+      # Verification only asks whether a citation survives WITHOUT the seeds.
+      # That is necessary and not sufficient: on f30acb18 the reviewer cited S3
+      # at options.py:2087 only in seeded runs, and reading django settled it as
+      # a REAL scoping bypass -- the change-form action path builds its queryset
+      # from _default_manager, bypassing ModelAdmin.get_queryset(), then filters
+      # pk__in on pks taken straight from POST. A true finding the truth set
+      # scores as a false positive, and no number of clean control runs can see
+      # it. So a human judgement about the host outranks the machine verdict and
+      # lives in a "#!DQ" line that the verification writer preserves and cannot
+      # clear.
+      _dq=$(awk -F'\t' -v s="$DJ_SHA" '$1=="#!DQ" && $2==s {print $3; exit}' "$VHOSTS" 2>/dev/null)
+      if [ -n "$_dq" ]; then
+        echo
+        echo "  UNMEASURED  case 17: host $DJ_HOST is DISQUALIFIED."
+        echo "  $_dq"
+        echo "  Its truth set cannot be knowable, so no F1 from it is readable."
+        exit 2
+      fi
+      _vrow=$(awk -F'\t' -v s="$DJ_SHA" '$1==s {print; exit}' "$VHOSTS" 2>/dev/null)
+      _vverd=$(printf '%s' "$_vrow" | cut -f2)
+      if [ -z "$_vrow" ]; then
+        echo
+        echo "  UNMEASURED  case 17: host $DJ_HOST has never been verified."
+        echo "  Its arms score every citation outside {S1 S2 S4 S6} as a false"
+        echo "  positive, which is only sound if the reviewer returns CLEAN on the"
+        echo "  host's own change. Nobody has checked. Run the same command with"
+        echo "  --verify-host before asking this corpus for a number."
+        exit 2
+      fi
+      if [ "$_vverd" != "CLEAN" ]; then
+        echo
+        echo "  UNMEASURED  case 17: host $DJ_HOST is recorded $_vverd, not CLEAN."
+        echo "  $(printf '%s' "$_vrow" | cut -f4) was cited on the host's OWN diff with nothing"
+        echo "  seeded, so scoring it as a false positive penalises whichever arm"
+        echo "  searched hardest -- the bias this corpus exists to avoid."
+        echo "  Pick another host, or put that criterion in the truth set and"
+        echo "  RECOMPUTE. Refusing to produce a number from this corpus."
+        exit 2
+      fi
+    fi
     HFIX="$WORK/dj"; mkdir -p "$HFIX"
     DJ_SUBJ=$(cd "$CORPUS_REPO" && git log -1 --format=%s "$DJ_HOST" 2>/dev/null)
     # Library code only. django commits touch tests/ heavily, and a reviewer
@@ -782,6 +874,17 @@ if want 17; then
       for _f in $DJ_FILES; do
         (cd "$CORPUS_REPO" && git show "$DJ_HOST:$_f" 2>/dev/null) > "$_f" || : > "$_f"
       done
+      # THE HOST CHANGE AND THE SEEDS ARE SEPARATE COMMITS.
+      #
+      # They used to be one, and --verify-host would then have had to rebuild
+      # the fixture a second way to get an unseeded diff -- reintroducing the
+      # exact defect it exists to close, since a control built by different code
+      # is not a control. Split, base..HEAD is byte-identical to what case 17
+      # always audited (a diff between two trees does not care how many commits
+      # separate them) and base..HEAD~1 is that same diff minus the seeds, from
+      # the same base over the same files. The containment check below proves
+      # the second is a subset of the first rather than assuming it.
+      git commit -qam "host change"
       # ITERATE OVER THE DEFECTS, NOT THE FILES.
       #
       # This used to seed one defect per file, cycling. On a host with 2 library
@@ -839,12 +942,17 @@ PYDEF
              ;;
         esac
       done
-      git commit -qam "host change plus seeded defects"
+      git commit -qam "seeded defects"
     ) >/dev/null 2>&1
 
     cd "$HFIX" || exit 1
-    HARD_BASE="$(git rev-parse HEAD~1)"
-    HARD_HEAD="$(git rev-parse HEAD)"
+    HARD_BASE="$(git rev-parse HEAD~2)"
+    HARD_SEEDED="$(git rev-parse HEAD)"
+    HARD_HEAD="$HARD_SEEDED"
+    # Verification audits the host change ALONE -- same base, same files, same
+    # criteria, same audit(), one commit short. Resolved to SHAs immediately:
+    # HEAD-relative names in the diff range are what killed the old case 17.
+    [ "$VERIFY_HOST" = 1 ] && HARD_HEAD="$(git rev-parse HEAD~1)"
     {
       printf 'C1\t%s\n' "$DJ_SUBJ"
       printf 'S1\tincorrect output or silently wrong result\n'
@@ -855,6 +963,7 @@ PYDEF
       printf 'S6\tconcurrency or ordering hazard\n'
     } > "$WORK/hard-criteria.tsv"
     git diff -W "$HARD_BASE".."$HARD_HEAD" > "$WORK/hard-diff.txt"
+    git diff -W "$HARD_BASE".."$HARD_SEEDED" > "$WORK/seeded-diff.txt"
     CRIT_FILE="$WORK/hard-criteria.tsv"
     DIFF_FILE="$WORK/hard-diff.txt"
     # Truth is the SEEDED defects only. C1 is the host commit's own subject and
@@ -1065,6 +1174,105 @@ JS
     echo "  MUST NOT REPORT A TIE IT DID NOT EARN."
     exit 2
   fi
+  # ---- HOST VERIFICATION ---------------------------------------------------
+  # Runs instead of the arms, never alongside them: this asks a question ABOUT
+  # the corpus, and a number produced from a corpus that has not answered it
+  # would be exactly the reading that has to stop.
+  if [ "$VERIFY_HOST" = 1 ]; then
+    echo "        VERIFYING THE HOST. Auditing $HARD_BASE..$HARD_HEAD -- the diff"
+    echo "        case 17 audits, minus the seeded commit. $RUNS runs, tier 2."
+
+    # The control has to be a SUBSET of the audited diff, or it is not a control
+    # for it. Changed lines only: -W context can legitimately differ once the
+    # seeds extend a file.
+    _miss=$(comm -23 <(grep '^[+-][^+-]' "$DIFF_FILE" | sort -u) \
+                     <(grep '^[+-][^+-]' "$WORK/seeded-diff.txt" | sort -u) | head -3)
+    if [ -n "$_miss" ]; then
+      echo
+      echo "  ABORT — the control diff is NOT contained in the diff case 17 audits."
+      echo "  A finding here would say nothing about a finding there. First missing:"
+      printf '%s\n' "$_miss" | sed 's/^/    /'
+      exit 2
+    fi
+    ok "control diff is a subset of the diff case 17 audits (same base, same files)"
+
+    _dirty=""
+    _clean=0
+    for i in $(seq 1 "$RUNS"); do
+      audit "$WORK/v$i.json" 2
+      _c=$(crits "$WORK/v$i.json" | tr '\n' ' ')
+      if [ -z "$_c" ]; then
+        _clean=$((_clean + 1))
+        echo "        run $i: CLEAN"
+      else
+        echo "        run $i: $_c"
+        for _id in $(crits "$WORK/v$i.json"); do
+          echo "          $_id  $(cite "$_id" "$WORK/v$i.json")"
+          _dirty="$_dirty $_id"
+        done
+      fi
+    done
+
+    _uniq=$(printf '%s\n' $_dirty | grep -v '^[[:space:]]*$' | sort -u | tr '\n' ' ' | sed 's/ *$//')
+
+    # ROWS ACCUMULATE, AND A CITATION IS STICKY.
+    #
+    # Overwriting was measured wrong on 2026-09-07: f30acb18 cited C1 on a
+    # single-run verification and then returned clean three times in a row. A
+    # writer that kept only the last result would have erased the one run that
+    # carried the finding and published CLEAN 3/3. Cleanliness is the claim
+    # needing evidence, one citation refutes it, and three quiet runs afterwards
+    # do not restore it. So citations union, runs sum, and DIRTY never decays.
+    _prow=$(awk -F'\t' -v s="$DJ_SHA" '$1==s {print; exit}' "$VHOSTS" 2>/dev/null)
+    _pruns=$(printf '%s' "$_prow" | cut -f3); [ -n "$_pruns" ] || _pruns=0
+    _pcit=$(printf '%s' "$_prow" | cut -f4); [ "$_pcit" = "-" ] && _pcit=""
+    _allcit=$(printf '%s %s' "$_pcit" "$_uniq" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ *$//')
+    _verd=CLEAN; [ -n "$_allcit" ] && _verd=DIRTY
+    _truns=$((_pruns + RUNS))
+    [ -f "$VHOSTS" ] || printf '%s\n' \
+      '# Host verification for case 17 --corpus django. Data rows are written ONLY' \
+      '# by --verify-host, and accumulate: runs sum, citations union, DIRTY is sticky.' \
+      '# A "#!DQ" line is a HUMAN disqualification. It outranks any verdict and no' \
+      '# run clears it -- verification cannot see a finding that needs the seeds.' \
+      '# sha	verdict	runs	cited	date	fixture range (throwaway repo, NOT django shas)' > "$VHOSTS"
+    # Two verifications running at once can LOSE a row -- each rewrites from
+    # its own snapshot. Deliberately unlocked: the loss is fail-safe in one
+    # direction only. A dropped row reads as "never verified" and aborts the
+    # arms, and a dropped DIRTY row cannot resurface as CLEAN, because a clean
+    # writer that never saw the citation drops the whole row rather than
+    # rewriting its verdict. Re-run the verification; never hand-edit a verdict.
+    awk -F'\t' -v s="$DJ_SHA" '$1 != s' "$VHOSTS" > "$WORK/vh.tmp"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$DJ_SHA" "$_verd" "$_truns" "${_allcit:--}" \
+      "$(date +%Y-%m-%d)" "$HARD_BASE..$HARD_HEAD" >> "$WORK/vh.tmp"
+    cp "$WORK/vh.tmp" "$VHOSTS"
+    echo "        recorded $_verd over $_truns cumulative runs in acceptance/verified-hosts.tsv"
+
+    if [ -z "$_allcit" ]; then
+      ok "host $DJ_HOST returns CLEAN on the exact diff case 17 audits ($_clean/$RUNS this run, $_truns cumulative)"
+      echo "        NECESSARY, NOT SUFFICIENT. This says the reviewer cites nothing"
+      echo "        when the seeds are absent. It cannot see a citation that only"
+      echo "        appears WITH them and is still true of the host's own code --"
+      echo "        S3 at options.py:2087 on f30acb18 was exactly that. A clean"
+      echo "        verification permits the host; it does not vouch for it."
+    elif [ -z "$_uniq" ]; then
+      bad "host $DJ_HOST returned clean $_clean/$RUNS here but has cited $_allcit before"
+      echo "        A quiet run does not retire a citation. The row stays DIRTY."
+    else
+      bad "host $DJ_HOST is NOT clean on the exact diff: cited $_allcit"
+      echo "        Case 17 scores truth as {S1 S2 S4 S6}, so every criterion above"
+      echo "        is counted a FALSE POSITIVE while being a property of the HOST,"
+      echo "        not of the seeded code. That penalises whichever arm searched"
+      echo "        hardest -- the precise bias this corpus was built to avoid, and"
+      echo "        the bias that decides every F1 gap between the arms."
+      echo "        DISQUALIFY the host, or put these criteria in the truth set and"
+      echo "        RECOMPUTE. Never annotate the F1 and keep it."
+    fi
+    echo
+    echo "  $PASS passed, $FAIL failed"
+    [ "$FAIL" -eq 0 ]
+    exit $?
+  fi
+
   K=2
 
   # (a) K parallel, one round

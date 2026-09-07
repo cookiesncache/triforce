@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 179 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 197 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -691,6 +691,73 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### The falsification is WITHDRAWN, and the two "false positives" split (2026-09-07)
+
+`--verify-host` now audits the **exact diff case 17 audits, minus the seeded commit** — same base,
+same files, same `audit()`, same criteria, one commit short — and the arms refuse to score a host
+that has not passed it. That closes the guard defect of 2026-09-06, and it is the *smaller* half of
+what today produced.
+
+**The control alone could not settle this, and reading django could.** Two citations were being
+scored as false positives. They are not the same kind of thing:
+
+| citation | the reviewer's reason | the code | scored |
+| --- | --- | --- | --- |
+| `C1 admin_modify.py:158` | "extra positional arg shifts `InclusionAdminNode(parser, token)`" | **WRONG.** `InclusionAdminNode.__init__(self, name, parser, token, func, template_name, ...)`. The call passes `"change_form_admin_actions"`, `parser`, `token` positionally and `func`/`template_name` by keyword — the same shape as every other tag in that file. There is no extra positional arg. | FP — **correctly** |
+| `S3 options.py:2087` | "change-form action queryset bypasses `get_queryset` scope" | **RIGHT, on my reading.** At `options.py:2108` the change-form POST path builds `queryset = self.model._default_manager.get_queryset()` and hands it to `response_action`, which does `queryset.filter(pk__in=selected)` with `selected = request.POST.getlist(ACTION_CHECKBOX_NAME)`. The changelist path (2349, 2375) passes `cl.get_queryset(request)` instead, which honours `ModelAdmin.get_queryset()`. So a ModelAdmin that scopes rows per user has that scope bypassed for attacker-supplied pks on the change-form path only. Still present at django HEAD `b3f4d83`; only a deprecation rename has touched those lines since. | FP — **wrongly** |
+
+So on host `f30acb18` the truth set `{S1 S2 S4 S6}` is **wrong**: it scores a correct S3 as a false
+positive. No F1 from that host is readable, and **both falsification branches of 2026-09-06 are
+withdrawn — neither confirmed nor refuted.** Arm (d) dropped one invention and one correct finding;
+whether that is a precision win cannot be read off a truth set that miscounts one of them.
+
+The S3 reading is a judgement about third-party code, not a measurement. It is written out in full
+above precisely so it can be overturned; if it is wrong, S3 is an ordinary false positive, the
+2026-09-06 numbers stand as measured, and `f30acb18` should be requalified.
+
+**The control is NECESSARY AND NOT SUFFICIENT, and that is the general lesson.** Unseeded, over 7
+runs on `f30acb18`:
+
+```
+C1  cited in 2 of 7 runs   -> reproduces without the seeds. Not seed-caused. Enough on its
+                              own to make the machine verdict DIRTY, at admin_modify.py:158
+                              once and :157 the other time -- the span drifts, which is the
+                              same instability case 12 characterises.
+S3  cited in 0 of 7 runs   -> the control says NOTHING about it, and S3 is the one that
+                              decides whether the falsification was real.
+```
+
+The citation that mattered is the one the control cannot see. A verification permits a host; it
+does not vouch for one. The harness says so in its own output now, because a green line reading
+"host returns CLEAN" is otherwise read as a guarantee it cannot give.
+
+**An overwrite bug, caught in flight.** `f30acb18` cited C1 on a single-run verification, then
+returned CLEAN three times in a row, then cited it again. A writer keeping only the last result
+would have published `CLEAN 3/3` at the exact moment it was asked, and erased the finding. Rows now accumulate: runs sum, citations
+union, and **DIRTY never decays** — cleanliness is the claim needing evidence, one citation refutes
+it, and three quiet runs afterwards do not restore it.
+
+**What is enforced now, instead of written down.** The host requirement had been a comment for
+three days — "THE HOST COMMIT MUST BE ONE THE REVIEWER RETURNS CLEAN ON, unseeded" — while two of
+the three django runs used a host nobody had checked, including the only run that fired the
+falsifier. `acceptance/verified-hosts.tsv` holds the verdicts; only a `--verify-host` run writes a
+data row, so the evidence and the permission are one artifact. A `#!DQ` line is a human
+disqualification, outranks any verdict, and no run can clear it — that is where `f30acb18` now sits,
+because the S3 problem is invisible to the machine check.
+
+**Where case 17's django corpus stands: NO USABLE HOST.**
+
+```
+f30acb18   DIRTY (C1, 2 of 7 unseeded runs)  -- refused by the machine check alone
+           DISQUALIFIED (S3)                  -- and by the reason the machine cannot see
+804660d6   CLEAN 3/3                          -- but arm (a) already scores 1.000 on it, so
+                                                 nothing can falsify. A ceiling, refused.
+```
+
+The corpus needs a host that verifies clean **and** leaves the reviewer room to be wrong. Until
+there is one, arm (d) is unexercised on readable data and the one-round premise is neither
+supported nor falsified by django.
+
 ### Arm (d) ran, both falsification branches fired — and the result is CONTAMINATED (2026-09-06)
 
 Three runs, two hosts. Arm (d) is the revision round: it may drop a finding as well as add one, and
@@ -715,7 +782,11 @@ so, so its F1 is not evidence about withdrawal in either direction. The guards w
 ```
 
 **DO NOT REPORT THAT AS A FALSIFICATION.** The citation text — printed for the first time on this
-run, and built precisely for this — says the false positives are probably not false:
+run, and built precisely for this — is about django's own code, so the truth set may be wrong.
+(Read the 2026-09-07 section above before this one. "The false positives are probably not false",
+as this section originally put it, was itself an overclaim: a citation landing on a django line is
+not an adjudication of it. One of these two is false and one is true, and it took reading django
+to tell which.)
 
 ```
   (a) C1  django/contrib/admin/templatetags/admin_modify.py:158 -- extra positional arg breaks change-form actions tag
@@ -1090,7 +1161,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **179** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **197** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its

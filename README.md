@@ -172,11 +172,11 @@ Everything below is either a number or an honest blank. Nothing deferred is repo
 Installs from the pinned SHA and loads with its full inventory — 6 agents, 2 skills, 1 hook —
 at a projected **~694 tokens always-on**, recorded here as the baseline for future comparison.
 
-`bash acceptance/run.sh` — **179 checks green**:
+`bash acceptance/run.sh` — **197 checks green**:
 
 | Suite | Checks | Covers |
 |---|---|---|
-| static | 121 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no `xhigh` effort, tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures — plus the measurement harnesses themselves: the headless transport against the Stop-hook defect, every corpus built and each seeded defect matched to the criterion claiming it, ground truth held to a proper subset of the criteria, the falsifier's verdict chain driven to every outcome, and each harness telling a missing `claude` apart from an unauthenticated one |
+| static | 139 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no `xhigh` effort, tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures — plus the measurement harnesses themselves: the headless transport against the Stop-hook defect, every corpus built and each seeded defect matched to the criterion claiming it, ground truth held to a proper subset of the criteria, the falsifier's verdict chain driven to every outcome, each harness telling a missing `claude` apart from an unauthenticated one, and case 17 refusing to score a django host that has not been verified on the exact diff it audits |
 | risk score | 7 | additive scoring, categorical floors, T0 content class. Includes a 4-line auth-guard removal reaching **T3** — the case a multiplicative score zeroes out |
 | preflight | 10 | case 1: `baseRef` unset/`fresh` **blocks**, `CLAUDE_CODE_SUBAGENT_MODEL` blocks, version read from the binary |
 | ledger | 31 | cases 8 + 9: caps hold at 4/6/9, counters monotone under every command sequence, dedup on `seen`, and `UNRESOLVED` escalating to a human on the third |
@@ -194,7 +194,7 @@ an answer.
 | Tier-2 cases 2–5 (isolation, base-targets-orchestrator, sole merge point, cleanup) | **PASS.** |
 | Case 6 (failed executors are retained) | **MEASURES the property now, and is NON-DETERMINISTIC** — two runs the same day, opposite outcomes. Its fixture never created the file its task edited, so whether the executor did any work was a coin flip. Retention is neither established nor refuted. |
 | Floor ablation (Cause A) | **CONFIRMED.** A clean diff returns nothing under the shipped contract and manufactured findings under one carrying a floor. **The gate does not remove them** — removing the floor is not one of two defences, it is the only one. |
-| The one-round falsifier | **NOT FALSIFIED**, on a corpus where the comparison had power: a forced second round never beat one round. Two earlier attempts were refused as uninformative — a ceiling, then a cap in the ground truth — rather than counted as corroboration. |
+| The one-round falsifier | **NOT FALSIFIED** by a forced second *independent* round: arm (b) never beat arm (a), 3 of 3. Later runs where the **sequential** and **revision** arms did beat it are **withdrawn** — their host turned out to violate a criterion the truth set calls clean, so those F1s were never readable. Three attempts refused as uninformative rather than counted as corroboration: a ceiling, a cap in the ground truth, and now an unreadable truth set. |
 | Idempotence (case 12) | **FAILS.** A re-audit of an unchanged diff names a criterion the first did not. Characterised by span: it is the **same defect relabelled**, not a new citation — a bounded population with unstable labels. Smaller than a schema leak, still a defect, still failing. |
 
 ### Not measured
@@ -202,7 +202,8 @@ an answer.
 | | Status |
 |---|---|
 | navi A/B, plan-gate four-arm A/B | **NOT RUN.** Both seats stay empty until they are. See [`evals/README.md`](evals/README.md). |
-| Case 17 arm (d) — a round that may **withdraw** a finding | **BUILT, NEVER RUN.** Deferred until its gate opened: it needs false positives to withdraw, and there were none until a real-commit corpus produced some. |
+| Case 17 arm (d) — a round that may **withdraw** a finding | **BUILT AND EXERCISED, RESULT WITHDRAWN.** It ran, and it did the one thing (b) and (c) cannot: it removed findings. But it removed a correct one along with an invented one, and the host it ran on is disqualified, so the numbers say nothing yet. |
+| Case 17 on django — a host that can falsify | **NONE.** One host verifies clean but saturates (arm (a) already scores 1.000); the other leaves room to be wrong but violates `S3` in its own diff. The corpus needs a host that is both. |
 | Case 16 — effective false positives over rolling windows | **NOT RUN.** Needs production audits to accumulate. |
 | with/without ablation delta | **NOT RECORDED.** |
 

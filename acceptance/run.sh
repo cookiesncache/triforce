@@ -680,6 +680,38 @@ fi
 #   3. Ground truth omitted S4, which the seeded code genuinely violates (purge
 #      before archive), scoring a correct finding as a false positive and
 #      penalising the arm that searches hardest -- arm (b).
+# ---- the allowlist itself --------------------------------------------------
+# Rows are evidence about a corpus, so a malformed one is worse than a missing
+# one: it would silently gate on a verdict nobody can read.
+_VH=acceptance/verified-hosts.tsv
+if [ -f "$_VH" ]; then
+  _vhbad=$(awk -F'\t' '/^#/ {next} NF==0 {next}
+    { if (NF != 6 || $1 !~ /^[0-9a-f]{40}$/ || ($2 != "CLEAN" && $2 != "DIRTY") || $3 !~ /^[0-9]+$/ || $3+0 < 1) print NR }' "$_VH")
+  if [ -z "$_vhbad" ]; then
+    sok "every verified-hosts row is a full sha, a CLEAN/DIRTY verdict and a run count of at least 1"
+  else
+    sbad "verified-hosts.tsv has malformed rows (line $(printf '%s' "$_vhbad" | tr '\n' ' '))"
+  fi
+  # A CLEAN row must cite nothing and a DIRTY row must cite something. Either
+  # inverse is a verdict that disagrees with its own evidence.
+  _vhinc=$(awk -F'\t' '/^#/ {next} NF==6 { if (($2=="CLEAN" && $4 != "-") || ($2=="DIRTY" && $4 == "-")) print NR }' "$_VH")
+  if [ -z "$_vhinc" ]; then
+    sok "no verified-hosts row contradicts its own citation column"
+  else
+    sbad "verified-hosts.tsv has a verdict that disagrees with its citations (line $(printf '%s' "$_vhinc" | tr '\n' ' '))"
+  fi
+  # A disqualification that names no reason is an unexplained veto, and the next
+  # reader has no way to judge or retire it.
+  _vhdq=$(awk -F'\t' '$1=="#!DQ" { if (NF != 3 || $2 !~ /^[0-9a-f]{40}$/ || length($3) < 20) print NR }' "$_VH")
+  if [ -z "$_vhdq" ]; then
+    sok "every disqualification names a full sha and states its reason"
+  else
+    sbad "verified-hosts.tsv has a disqualification with no sha or no reason (line $(printf '%s' "$_vhdq" | tr '\n' ' '))"
+  fi
+else
+  sbad "acceptance/verified-hosts.tsv is missing -- case 17's django arms cannot be gated"
+fi
+
 _s17="$(sed -n '/^# CASE 17/,$p' acceptance/live-cases.sh)"
 _l17="$(printf '%s' "$_s17" | grep -vE '^[[:space:]]*#')"
 if [ -z "$_s17" ]; then
@@ -860,6 +892,155 @@ else
     else
       sok "case 17's prose about arm (d) matches the arm it actually runs"
     fi
+  fi
+
+  # ---- host verification: the guard the corpus always assumed ------------
+  #
+  # Case 17's django corpus scores every citation outside {S1 S2 S4 S6} as a
+  # false positive. That is only sound if the reviewer returns CLEAN on the
+  # host commit's own change. The first guard audited a SUPERSET -- all *.py
+  # including tests, no seeds -- and a clean result there was recorded as if it
+  # certified the subset case 17 actually audits. It does not, and on host
+  # f30acb18 the difference was the whole result: C1 at admin_modify.py:158
+  # reproduces on the unseeded host diff, so it was never a false positive.
+  if printf '%s' "$_l17" | grep -qF 'VERIFY_HOST'; then
+    sok "case 17 can verify a host on the exact diff it audits (--verify-host)"
+
+    # The control must be PROVED a subset, not assumed. Assuming it is the
+    # defect this mode exists to close.
+    if printf '%s' "$_l17" | grep -qF 'seeded-diff.txt' \
+       && printf '%s' "$_l17" | grep -qF 'comm -23'; then
+      sok "host verification proves its control diff is a subset of the audited diff"
+    else
+      sbad "host verification does not check that its control diff is contained in the audited diff"
+    fi
+
+    # Splitting the seeds into their own commit must not have moved the diff
+    # case 17 audits. base..HEAD is still the seeded tree; only the control
+    # stops one commit short.
+    if printf '%s' "$_s17" | grep -qF 'HARD_BASE="$(git rev-parse HEAD~2)"' \
+       && printf '%s' "$_s17" | grep -qF 'HARD_HEAD="$HARD_SEEDED"'; then
+      sok "the seeds are their own commit and the audited range still ends at the seeded tree"
+    else
+      sbad "case 17's django range no longer ends at the seeded tree -- the arms would audit the wrong diff"
+    fi
+
+    # A question ABOUT the corpus cannot be answered alongside numbers FROM it.
+    _vh="$(printf '%s' "$_s17" | sed -n '/if \[ "\$VERIFY_HOST" = 1 \]; then/,/^  K=2$/p')"
+    if printf '%s' "$_vh" | grep -qF 'exit $?'; then
+      sok "host verification exits instead of falling through into the arms"
+    else
+      sbad "host verification can fall through and print arm scores from an unverified corpus"
+    fi
+  else
+    sbad "case 17 has no way to verify its host on the exact diff it audits"
+  fi
+
+  # ---- the host requirement must be ENFORCED, not written down -----------
+  #
+  # "THE HOST COMMIT MUST BE ONE THE REVIEWER RETURNS CLEAN ON, unseeded" sat
+  # in case 17 as a comment while two of the three django runs used a host
+  # nobody had checked -- including the only run that fired the falsifier. A
+  # comment cannot stop a run. Every requirement that decides whether a number
+  # is readable belongs in the code that produces the number.
+  if printf '%s' "$_l17" | grep -qF 'never been verified'; then
+    sok "case 17's django arms refuse a host that has never been verified"
+  else
+    sbad "case 17 will score a django host nobody has verified -- the requirement is prose again"
+  fi
+  if printf '%s' "$_l17" | grep -qF '!= "CLEAN"'; then
+    sok "case 17's django arms refuse a host recorded DIRTY"
+  else
+    sbad "case 17 will score a host recorded DIRTY, counting a host property as a false positive"
+  fi
+
+  # Verification is NECESSARY AND NOT SUFFICIENT: it only asks whether a
+  # citation survives without the seeds, and S3 at options.py:2087 on f30acb18
+  # appeared only in seeded runs while being true of django's own code. A human
+  # disqualification has to outrank the machine verdict, and no run may clear it.
+  if printf '%s' "$_l17" | grep -qF '#!DQ'; then
+    sok "a human disqualification outranks the machine verdict and cannot be cleared by a run"
+  else
+    sbad "nothing can disqualify a host that verifies clean but is known bad -- the verdict is final"
+  fi
+  if printf '%s' "$_l17" | grep -qF 'NECESSARY, NOT SUFFICIENT'; then
+    sok "a clean verification says so in its own output: it permits a host, it does not vouch for it"
+  else
+    sbad "a clean verification reads as a guarantee it cannot give"
+  fi
+
+  # The allowlist must be unwritable outside verification, or a run could
+  # authorise the very corpus it is about to score.
+  _vhw="$(printf '%s' "$_s17" | sed -n '/if \[ "\$VERIFY_HOST" = 1 \]; then/,/^  K=2$/p')"
+  if printf '%s' "$_s17" | grep -qF 'cp "$WORK/vh.tmp" "$VHOSTS"'; then
+    if printf '%s' "$_vhw" | grep -qF 'cp "$WORK/vh.tmp" "$VHOSTS"'; then
+      sok "only a --verify-host run can write the allowlist (evidence and permission are one artifact)"
+    else
+      sbad "the allowlist is written outside --verify-host -- a run could authorise its own corpus"
+    fi
+  else
+    sbad "host verification does not record its result, so the next run learns nothing from it"
+  fi
+
+  # And the enforcement must sit OUTSIDE that block, or the arms never reach it.
+  if printf '%s' "$_vhw" | grep -qF 'never been verified'; then
+    sbad "the host check lives inside --verify-host, so the scoring arms never reach it"
+  else
+    sok "the host check gates the scoring arms, not the verification that feeds it"
+  fi
+
+  # A DIRTY verdict must be recorded as readily as a clean one, and it must not
+  # decay. f30acb18 cited C1 once, returned clean three times running, then cited
+  # it again -- 2 of 7 unseeded runs. A writer that kept only the last result
+  # would have published CLEAN 3/3 at the moment it was asked.
+  if printf '%s' "$_s17" | grep -qF '_verd=CLEAN; [ -n "$_allcit" ] && _verd=DIRTY'; then
+    sok "verification records DIRTY as readily as CLEAN"
+  else
+    sbad "verification may only record clean hosts, so a dirty one leaves no trace"
+  fi
+  if printf '%s' "$_s17" | grep -qF '_truns=$((_pruns + RUNS))' \
+     && printf '%s' "$_s17" | grep -qF '_allcit=$(printf'; then
+    sok "verification rows accumulate -- a later quiet run cannot retire an earlier citation"
+  else
+    sbad "verification overwrites its row, so a quiet run erases the run that found something"
+  fi
+
+  # BEHAVIOURAL, not textual. These are the guards that would let a verification
+  # certify a host it never looked at, so they are executed rather than grepped.
+  #
+  # EVERY PROBE MUST DIE AT A GUARD. This suite is offline, and live-cases.sh
+  # runs its auth probe -- a real model call -- immediately after the guards.
+  # The first version of this block passed `--corpus django --runs 3`, which is
+  # a VALID combination: it sailed through both guards, spent the auth probe and
+  # started case 12 for real. An offline suite that quietly bills a model is a
+  # worse defect than the one it was checking for. `--corpus hard` with a valid
+  # --runs proves the run-count guard let 3 through AND stops one guard later,
+  # so the discriminating probe never reaches the model.
+  _r0="$(bash acceptance/live-cases.sh --verify-host --corpus hard --runs 0 2>&1)"
+  _rn="$(bash acceptance/live-cases.sh --verify-host --corpus hard --runs 0abc 2>&1)"
+  _rh="$(bash acceptance/live-cases.sh --verify-host --corpus hard --runs 3 2>&1)"
+  if printf '%s' "$_r0" | grep -qF 'must be at least 1' \
+     && printf '%s' "$_rn" | grep -qF 'positive integer'; then
+    sok "--runs 0 and a non-numeric --runs are both refused before anything is audited"
+  else
+    sbad "--verify-host accepts a run count that audits nothing and would report the host clean"
+  fi
+
+  # The same probe, read the other way: a valid count reaches the NEXT guard, so
+  # the run-count check can be green as well as red.
+  if printf '%s' "$_rh" | grep -qF 'only means something with --corpus django'; then
+    sok "a valid --runs passes its guard and --verify-host is then refused on the hostless corpus"
+  else
+    sbad "--verify-host on the hard corpus is not refused, or a valid --runs never gets past its guard"
+  fi
+
+  # live-cases.sh prints its banner only AFTER the guards and just before the
+  # auth probe, so the banner in a probe's output is proof that probe reached
+  # the model. None of them may.
+  if printf '%s%s%s' "$_r0" "$_rn" "$_rh" | grep -qF 'triforce live cases'; then
+    sbad "an offline probe got past the guards into live-cases.sh proper -- it spends a model call"
+  else
+    sok "every live-cases probe dies at a guard, before the auth probe (the suite stays offline)"
   fi
 
   # ---- the verdict must be able to see the sequential arm ----------------
@@ -1195,7 +1376,7 @@ defer "case 11 (clean-return rate, THE HEADLINE METRIC) — needs a live model. 
 defer "case 12,13 (idempotence; fix-and-re-audit rounds 1-3) — need a live model. Run acceptance/live-cases.sh --case 12 / --case 13 when authenticated."
 defer "case 15 (floor ablation) — needs a live model; the floor-free static check above is its cheap proxy, not a substitute. Run acceptance/live-cases.sh --case 15."
 defer "case 16 (effective false positives over rolling windows) — needs production audits to accumulate."
-defer "case 17 arm (d), the REVISION round that may withdraw a finding — built 2026-09-06, NEVER RUN. Its gate opened when the django corpus produced the first false positives. Run acceptance/live-cases.sh --case 17 --corpus django --repo <clone> --host <sha>, on a host verified clean unseeded first."
+defer "case 17 on the django corpus — NO USABLE HOST. Arm (d) ran on 2026-09-06 and both falsification branches fired; those numbers are WITHDRAWN with their host. f30acb18 is disqualified: its own diff really does violate S3 (options.py:2108 builds the change-form action queryset from _default_manager, bypassing ModelAdmin.get_queryset()), so the truth set {S1 S2 S4 S6} scores a correct finding as a false positive. 804660d6 verifies CLEAN but saturates — arm (a) already scores 1.000, so nothing can falsify on it. Needed: a host that verifies clean AND leaves the reviewer room to be wrong. Find one with acceptance/live-cases.sh --case 17 --corpus django --repo <clone> --host <sha> --verify-host."
 
 echo
 echo "=============================================================="

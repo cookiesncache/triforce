@@ -4,3 +4,7 @@
 # so the contract-sync check compares content, not line endings.
 *.md text eol=lf
 *.json text eol=lf
+# Machine-written evidence. The harness rewrites it with LF and parses it with
+# awk -F'\t'; a CRLF checkout would put a stray \r in every last field and make
+# every run show the file as modified.
+*.tsv text eol=lf
