@@ -15,16 +15,24 @@ cd "$ROOT" || exit 1
 SUITES=0; SUITES_OK=0
 DEFERRED=()
 
+# Each suite's own tally is summed so the ONE number the README carries can be
+# checked against reality. The README claimed "89 checks green" while the suite
+# had grown to 178 -- and the existing staleness check could not see it, because
+# it only looks for percentages and dollar figures. A README that understates
+# its own project is lying just as much as one that overstates it.
+CHECKS=0
 run_suite() {
-  local name="$1" script="$2"
+  local name="$1" script="$2" out rc n
   SUITES=$((SUITES + 1))
   echo
   echo "=============================================================="
   echo " $name"
   echo "=============================================================="
-  if bash "$script"; then
-    SUITES_OK=$((SUITES_OK + 1))
-  fi
+  out=$(bash "$script"); rc=$?
+  printf '%s\n' "$out"
+  [ "$rc" -eq 0 ] && SUITES_OK=$((SUITES_OK + 1))
+  n=$(printf '%s' "$out" | sed -n 's/^  \([0-9][0-9]*\) passed,.*/\1/p' | tail -1)
+  CHECKS=$((CHECKS + ${n:-0}))
 }
 
 defer() { DEFERRED+=("$1"); }
@@ -1150,6 +1158,7 @@ fi
 
 echo
 echo "  $SPASS passed, $SFAIL failed"
+CHECKS=$((CHECKS + SPASS))
 SUITES=$((SUITES + 1)); [ "$SFAIL" -eq 0 ] && SUITES_OK=$((SUITES_OK + 1))
 
 # --- unit suites ------------------------------------------------------------
@@ -1172,6 +1181,20 @@ echo "=============================================================="
 echo " summary"
 echo "=============================================================="
 echo "  suites: $SUITES_OK/$SUITES green"
+echo "  checks: $CHECKS"
+
+# The README carries this number, and only this number. Verify it rather than
+# trusting it: it was wrong by 89 before anyone noticed.
+_rmc=$(grep -oE '\*\*[0-9]+ checks green\*\*' README.md 2>/dev/null | grep -oE '[0-9]+' | head -1)
+if [ -z "$_rmc" ]; then
+  echo "  FAIL  README states no check count — the one figure it carries must be checkable"
+  SUITES=$((SUITES + 1))
+elif [ "$_rmc" -ne "$CHECKS" ]; then
+  echo "  FAIL  README says $_rmc checks; the suite runs $CHECKS. Update README.md."
+  SUITES=$((SUITES + 1))
+else
+  echo "  ok    README's check count matches the suite ($CHECKS)"
+fi
 echo
 echo "  DEFERRED — not run, and NOT counted as passing:"
 for d in "${DEFERRED[@]}"; do

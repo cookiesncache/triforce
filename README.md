@@ -172,28 +172,45 @@ Everything below is either a number or an honest blank. Nothing deferred is repo
 Installs from the pinned SHA and loads with its full inventory — 6 agents, 2 skills, 1 hook —
 at a projected **~694 tokens always-on**, recorded here as the baseline for future comparison.
 
-`bash acceptance/run.sh` — **89 checks green**:
+`bash acceptance/run.sh` — **178 checks green**:
 
 | Suite | Checks | Covers |
 |---|---|---|
-| static | 31 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no `xhigh` effort, tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures |
+| static | 120 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no `xhigh` effort, tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures — plus the measurement harnesses themselves: the headless transport against the Stop-hook defect, every corpus built and each seeded defect matched to the criterion claiming it, ground truth held to a proper subset of the criteria, the falsifier's verdict chain driven to every outcome, and each harness telling a missing `claude` apart from an unauthenticated one |
 | risk score | 7 | additive scoring, categorical floors, T0 content class. Includes a 4-line auth-guard removal reaching **T3** — the case a multiplicative score zeroes out |
 | preflight | 10 | case 1: `baseRef` unset/`fresh` **blocks**, `CLAUDE_CODE_SUBAGENT_MODEL` blocks, version read from the binary |
 | ledger | 31 | cases 8 + 9: caps hold at 4/6/9, counters monotone under every command sequence, dedup on `seen`, and `UNRESOLVED` escalating to a human on the third |
 | gate | 10 | cases 10 + 14: each check kills its own candidate, severity-first ordering, ablation 0 vs 4 |
 
+### Measured against a live model
+
+Figures live in [issue #1](https://github.com/cookiesncache/claude-plugins/issues/1) and
+[`HANDOFF.md`](HANDOFF.md), for the reason stated above. What belongs here is which questions have
+an answer.
+
+| | Status |
+|---|---|
+| **Clean-return rate** (the headline metric) | **MEASURED, clears the bar.** Small-diff band on a real corpus, with genuine findings elsewhere in the same run — so the rate is not the degenerate kind. An earlier figure was retracted as an extraction artifact; the retraction is recorded next to the number. |
+| Tier-2 cases 2–5 (isolation, base-targets-orchestrator, sole merge point, cleanup) | **PASS.** |
+| Case 6 (failed executors are retained) | **MEASURES the property now, and is NON-DETERMINISTIC** — two runs the same day, opposite outcomes. Its fixture never created the file its task edited, so whether the executor did any work was a coin flip. Retention is neither established nor refuted. |
+| Floor ablation (Cause A) | **CONFIRMED.** A clean diff returns nothing under the shipped contract and manufactured findings under one carrying a floor. **The gate does not remove them** — removing the floor is not one of two defences, it is the only one. |
+| The one-round falsifier | **NOT FALSIFIED**, on a corpus where the comparison had power: a forced second round never beat one round. Two earlier attempts were refused as uninformative — a ceiling, then a cap in the ground truth — rather than counted as corroboration. |
+| Idempotence (case 12) | **FAILS.** A re-audit of an unchanged diff names a criterion the first did not. Characterised by span: it is the **same defect relabelled**, not a new citation — a bounded population with unstable labels. Smaller than a schema leak, still a defect, still failing. |
+
 ### Not measured
 
 | | Status |
 |---|---|
-| **Clean-return rate** (the headline metric, bar ≥70%) | **UNMEASURED.** `acceptance/clean-corpus.sh` is written and gated on auth. It runs first, because below 50% the criteria contract is decorative and the rest is wasted work. |
-| Tier-2 cases 2–6 (isolation, base-targets-orchestrator, cleanup, retention) | **UNMEASURED.** `acceptance/probe-harness.sh`, gated on auth. |
-| navi A/B, plan-gate four-arm A/B, floor ablation, the one-round falsifier | **NOT RUN.** See [`evals/README.md`](evals/README.md). |
+| navi A/B, plan-gate four-arm A/B | **NOT RUN.** Both seats stay empty until they are. See [`evals/README.md`](evals/README.md). |
+| Case 17 arm (d) — a round that may **withdraw** a finding | **BUILT, NEVER RUN.** Deferred until its gate opened: it needs false positives to withdraw, and there were none until a real-commit corpus produced some. |
+| Case 16 — effective false positives over rolling windows | **NOT RUN.** Needs production audits to accumulate. |
 | with/without ablation delta | **NOT RECORDED.** |
 
-The blocker is environmental: `claude -p` reports "Not logged in" in the build environment, and
-`claude plugin eval` is early-access gated at CLI v2.1.195. Every harness is written and runs on an
-authenticated machine.
+The three environmental blockers that gated all of this — no authenticated `claude -p`,
+`claude plugin eval` early-access gated, and a missing subagent-depth variable — are **cleared**.
+A separate defect was found and fixed along the way: the plugin's own `Stop` hook was discarding
+the plugin's own audits, because `claude -p` in text mode returns only the final message and the
+hook provoked a second one. Every harness now reads the whole transcript.
 
 ### Seats that are empty on purpose
 
