@@ -203,7 +203,7 @@ an answer.
 |---|---|
 | navi A/B, plan-gate four-arm A/B | **NOT RUN.** Both seats stay empty until they are. See [`evals/README.md`](evals/README.md). |
 | Case 17 arm (d) — a round that may **withdraw** a finding | **BUILT AND EXERCISED, RESULT WITHDRAWN.** It ran, and it did the one thing (b) and (c) cannot: it removed findings. But it removed a correct one along with an invented one, and the host it ran on is disqualified, so the numbers say nothing yet. |
-| Case 17 on django — a host that can falsify | **NONE.** One host verifies clean but saturates (arm (a) already scores 1.000); the other leaves room to be wrong but violates `S3` in its own diff. The corpus needs a host that is both. |
+| Case 17 on django — does the **sequential** arm beat one round? | **UNRESOLVED, n=2 and split.** On the one host verified clean, arm (c) beat arm (a) once (1.000 vs 0.857) and lost once against a ceiling that was correctly refused. The other host is disqualified — it violates `S3` in its own diff — so every number from it is withdrawn. Needs replication, not a new host. |
 | Case 16 — effective false positives over rolling windows | **NOT RUN.** Needs production audits to accumulate. |
 | with/without ablation delta | **NOT RECORDED.** |
 

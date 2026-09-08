@@ -745,18 +745,30 @@ data row, so the evidence and the permission are one artifact. A `#!DQ` line is 
 disqualification, outranks any verdict, and no run can clear it — that is where `f30acb18` now sits,
 because the S3 problem is invisible to the machine check.
 
-**Where case 17's django corpus stands: NO USABLE HOST.**
+**Where case 17's django corpus stands: ONE USABLE HOST, AND THE QUESTION IS STILL OPEN.**
 
 ```
 f30acb18   DIRTY (C1, 2 of 7 unseeded runs)  -- refused by the machine check alone
            DISQUALIFIED (S3)                  -- and by the reason the machine cannot see
-804660d6   CLEAN 3/3                          -- but arm (a) already scores 1.000 on it, so
-                                                 nothing can falsify. A ceiling, refused.
+804660d6   CLEAN 3/3                          -- usable
 ```
 
-The corpus needs a host that verifies clean **and** leaves the reviewer room to be wrong. Until
-there is one, arm (d) is unexercised on readable data and the one-round premise is neither
-supported nor falsified by django.
+I first wrote this as "no usable host", on the grounds that arm (a) scores 1.000 on 804660d6. That
+is one run of two. The other, from 2026-09-06, is this:
+
+```
+host       run   (a) F1   (b) F1   (c) F1   (d) F1
+804660d6    1    0.857    0.857    1.000    (not built yet)
+804660d6    C    1.000    1.000    0.857    1.000   <- ceiling, refused
+```
+
+So on the host that verifies clean, **the sequential arm beat one round once and lost once**, and
+the loss is the run where (a) was at ceiling and nothing could have beaten it. One win against one
+uninformative run is not a result, but it is not "no falsifying power" either — that reading came
+from treating a single ceiling run as the host's behaviour.
+
+**The next measurement is replication on 804660d6, not a search for a new host.** Arm (d) has still
+never run against anything it could withdraw: on run C it correctly reported withdrawing nothing.
 
 ### Arm (d) ran, both falsification branches fired — and the result is CONTAMINATED (2026-09-06)
 
@@ -817,6 +829,12 @@ only to add `S3`. One run falsifies, one shows nothing, one is a ceiling. **n=3 
 with a truth set now known to be suspect, is not a result.**
 
 ### Case 17 on the django corpus — the premise is NOT falsified (2026-09-06, n=3)
+
+> **Two of these three runs are on host `f30acb18`, which was DISQUALIFIED on 2026-09-07 — its own
+> diff violates `S3`, so its truth set scores a correct finding as a false positive. Those two rows
+> are withdrawn. Only the `804660d6` row survives, and it is the one where arm (c) beat arm (a).
+> The reasoning below about arm (c) being "one win, one loss, one tie" was computed across both
+> hosts and does not survive either. See the 2026-09-07 section above.**
 
 The first corpus on which the comparison had power. Three runs, two hosts:
 
