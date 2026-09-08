@@ -936,6 +936,32 @@ else
     sbad "case 17 has no way to verify its host on the exact diff it audits"
   fi
 
+  # ---- the host must supply NOISE, not just a place to put the seeds -----
+  #
+  # DJ_FILES is capped at six files and the cap does not pick the six that
+  # carry the change. Host 5f90dc24 is a 172-line commit that produced a
+  # TWELVE-line diff against ~24 lines of seeded defects: the seeds are the
+  # diff, the reviewer finds all of them, arm (a) saturates and the falsifier
+  # has no power. That is the hand-built fixture's failure, reappearing inside
+  # the corpus built to escape it.
+  if printf '%s' "$_l17" | grep -qF 'seeded ones. The seeds ARE the diff'; then
+    sok "case 17 refuses a django host that contributes less diff than its own seeds"
+  else
+    sbad "case 17 will score a host whose seeds outweigh its noise -- arm (a) saturates by construction"
+  fi
+  if printf '%s' "$_l17" | grep -qF 'host lines vs'; then
+    sok "case 17 reports host noise and seeded lines separately, not one combined count"
+  else
+    sbad "case 17 prints one line count, so a reader cannot tell noise from seeds"
+  fi
+  # And it must not fire during verification, which audits the host change ALONE
+  # and would therefore always look seed-heavy.
+  if printf '%s' "$_s17" | grep -qF '[ "$VERIFY_HOST" != 1 ] && [ "${_hloc:-0}" -lt "${_seedloc}" ]'; then
+    sok "the noise guard is skipped during verification, which audits the host change alone"
+  else
+    sbad "the noise guard would fire during verification and refuse every host"
+  fi
+
   # ---- the host requirement must be ENFORCED, not written down -----------
   #
   # "THE HOST COMMIT MUST BE ONE THE REVIEWER RETURNS CLEAN ON, unseeded" sat
@@ -1376,6 +1402,7 @@ defer "case 11 (clean-return rate, THE HEADLINE METRIC) — needs a live model. 
 defer "case 12,13 (idempotence; fix-and-re-audit rounds 1-3) — need a live model. Run acceptance/live-cases.sh --case 12 / --case 13 when authenticated."
 defer "case 15 (floor ablation) — needs a live model; the floor-free static check above is its cheap proxy, not a substitute. Run acceptance/live-cases.sh --case 15."
 defer "case 16 (effective false positives over rolling windows) — needs production audits to accumulate."
+defer "case 17's verification rows have NO FINGERPRINT of the diff they certify. A row says 'this host is clean', but what was audited depends on DJ_FILES, which is the host's non-test .py files capped at six -- and the cap does not pick the six that carry the change. Change that selection (picking the largest-diff files is the obvious improvement) and every stale CLEAN row silently certifies a diff that no longer exists. That is the same failure class as verifying a superset: a guard attached to the wrong artifact. Fix: record a hash of the sorted file list in the row, recompute it at the gate, and refuse on mismatch -- which means a row without one is not verified, so the existing rows must be re-run. Deferred because it costs a re-verification of every host and the selection has not changed yet."
 defer "case 17 on the django corpus — REPLICATION on host 804660d6, the one verified CLEAN. f30acb18 is disqualified (its own diff violates S3 at options.py:2108, so its truth set miscounts a correct finding) and every number from it is withdrawn, including both falsification branches of 2026-09-06. That leaves TWO scoring runs on 804660d6 and they disagree: (a) 0.857 with (c) 1.000 — the sequential arm WINNING — and (a) 1.000, a ceiling correctly refused. So the host is not a ceiling, it has falsifying power, and n=1 win against n=1 uninformative is not a result. Arm (d) has still never run with anything to withdraw. Run acceptance/live-cases.sh --case 17 --corpus django --repo <clone> --host 804660d685a5abd49fc66ba20c98d1a523f28f9f repeatedly, and read (c)-vs-(a) before (b)-vs-(a)."
 
 echo

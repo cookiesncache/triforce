@@ -971,8 +971,35 @@ PYDEF
     # and S5 are the criteria a citation can fall foul of.
     DJ_TRUTH=1
     _dloc=$(grep -c '^[+-][^+-]' "$WORK/hard-diff.txt" 2>/dev/null || true)
+    # Split the diff into the host's own noise and the seeds, and SAY WHICH IS
+    # WHICH. The whole claim of this corpus is that django's changes are
+    # realistic noise a single round has to search through; a line count that
+    # does not separate the two cannot support or refute that claim.
+    _sloc=$(grep -c '^[+-][^+-]' "$WORK/seeded-diff.txt" 2>/dev/null || true)
+    _hloc=$(git diff -W "$HARD_BASE".."$(git rev-parse HEAD~1)" | grep -c '^[+-][^+-]' 2>/dev/null || true)
+    _seedloc=$(( ${_sloc:-0} - ${_hloc:-0} ))
     echo "        corpus: django $DJ_HOST, ${_dloc:-0} changed lines, $(printf '%s' "$DJ_FILES" | wc -w | tr -d ' ') files"
     echo "        host subject (C1): $DJ_SUBJ"
+    echo "        noise: ${_hloc:-0} host lines vs ${_seedloc} seeded lines"
+
+    # A HOST SMALLER THAN ITS OWN SEEDS IS NOT NOISE.
+    #
+    # DJ_FILES is capped at six files, and the cap does not pick the six that
+    # carry the change: host 5f90dc24 is a 172-line commit that yielded a
+    # TWELVE-line diff, against ~24 lines of seeded defects. On a diff like that
+    # the seeds are the diff, the reviewer finds all of them, arm (a) saturates,
+    # and the falsifier has no power -- the same failure as the hand-built
+    # fixture this corpus was built to escape. Refusing is the same call the
+    # ceiling guard makes: a corpus that cannot produce the effect must not
+    # produce a number.
+    if [ "$VERIFY_HOST" != 1 ] && [ "${_hloc:-0}" -lt "${_seedloc}" ]; then
+      echo
+      echo "  UNMEASURED  case 17: host $DJ_HOST contributes ${_hloc:-0} changed lines against"
+      echo "  ${_seedloc} seeded ones. The seeds ARE the diff, so there is no noise for a single"
+      echo "  round to miss, arm (a) will saturate, and the comparison has no power."
+      echo "  Pick a host whose selected files actually carry its change."
+      exit 2
+    fi
   else
   HFIX="$WORK/hard"; mkdir -p "$HFIX/src"
   (

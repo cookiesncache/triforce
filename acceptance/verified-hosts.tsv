@@ -7,3 +7,5 @@
 f30acb184f75fd9260cfd6ddc48a3bbbd49f9c1d	DIRTY	3	C1	2026-09-07	a3dcfe2edf3a0b42c40ee797f6efe3b1c262a7b1..4f89adcb51cf2050be1f112031c82458d68471ba
 #!DQ	f30acb184f75fd9260cfd6ddc48a3bbbd49f9c1d	its own diff violates S3 -- options.py:2108 builds the change-form action queryset from _default_manager, bypassing ModelAdmin.get_queryset(), then filters pk__in on pks from POST; the changelist path passes cl.get_queryset(request) instead. Truth set {S1 S2 S4 S6} scores that correct finding as a false positive, so no F1 from this host is readable. Adjudicated by reading django 2026-09-07; see HANDOFF.md. Requalify only by overturning that reading.
 0f581cd29d42d1b5ed1dafb67794c2f3ce6705c9	CLEAN	2	-	2026-09-07	d4cf493695ac05c3698a224c2bb714ff358ce5b7..5f1a43c0a68e595097636cb676378042a349538d
+5f90dc2468bc52373efe4b231c4eb383b3f1edd2	CLEAN	2	-	2026-09-07	0c68da97130167a4814570d3316d33ef5185b10a..39d2cb3bff8eda7788474d9b1215e59159ac9566
+0d0e7f15038360c158b6d22c679b47b21557fa1f	DIRTY	2	S1	2026-09-07	bb5830293a2c93bdd421cff23f3cf6bea1f2a36b..da1322a01358241ede19b2d419616728aa23e96c

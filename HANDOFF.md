@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 197 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 200 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -691,6 +691,56 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### THE SEQUENTIAL ARM BEATS ONE ROUND, on a verified host, 3 informative runs of 3 (2026-09-07)
+
+Host `804660d6`, the only one verified CLEAN on the exact diff it audits. Every run below is on that
+host, and `f30acb18` contributes nothing to this table.
+
+```
+run   date         (a)     (b)     (c)     (d)     cited by (a)   cited by (c)
+1     2026-09-06   0.857   0.857   1.000   --      S1 S2 S6       S1 S2 S4 S6
+C     2026-09-06   1.000   1.000   0.857   1.000   ceiling -- refused, no power to falsify
+D     2026-09-07   0.857   0.857   1.000   0.857   S1 S2 S6       S1 S2 S4 S6
+E     2026-09-07   0.857   0.857   1.000   0.857   S1 S2 S6       S1 S2 S4 S6
+```
+
+**Three informative runs, three wins for the chained arm, and the same mechanism every time.** One
+round cites S1, S2 and S6 and misses **S4**. Arm (c)'s second round — told what round 1 cited and
+asked what it missed — finds S4. `FP=0` in every arm of every run, so **this is recall, not
+precision**: nothing is being invented, something is being found.
+
+**The budget is equal, so this is not "more compute wins."**
+
+```
+(a)  K=2 audits, independent, unioned      F1 0.857
+(b)  K=2 audits + 1 forced round = 3       F1 0.857   <- MORE compute, no gain
+(c)  K=2 audits, chained, unioned          F1 1.000   <- SAME compute as (a), fewer than (b)
+```
+
+Arm (b) never beat arm (a): three ties. **The issue's literal clause — a forced second independent
+round — is NOT falsified, and holds 6 of 6 across every host ever run.** What is falsified is the
+premise that clause defends. Direction, not repetition, is what bought the missing finding.
+
+**The mechanism is worth naming, because it suggests a cheaper intervention.** Arm (c)'s round-2
+prompt names the criteria already cited and asks for what was missed. Its effect is to point
+attention at the *uncited* criteria — here S3, S4 and S5. That is not a finding floor (the
+empty-array escape is explicit, and INVARIANT 1 is intact: `FP=0` everywhere, so nothing was
+manufactured), but it is coverage pressure by another route. If that is the whole mechanism, a
+single round told to walk the criteria list explicitly might buy the same recall at half the audits
+— which would beat (c) as well as (a). **That is the next experiment, and it is cheaper than
+shipping chaining.**
+
+**What this is NOT yet.** One host, one seeded defect set, and the same criterion (S4) missed every
+time. Three informative runs. The result is a property of `804660d6` until it reproduces on
+`0f581cd2`, the second host verified clean — which is running now. If S4 is simply the hardest of
+the four seeds to see, the finding is about that defect and not about chaining.
+
+**Arm (d) is still stuck, and structurally so.** It withdrew nothing in 3 of the 4 runs above and
+correctly said so. Its only mechanism is removing a false positive, and on a host clean enough for
+the truth set to be readable there are no false positives to remove. The one corpus that produced
+them was `f30acb18`, whose truth set is not readable. **Arm (d) needs a host that is clean AND on
+which the reviewer still invents — and nothing so far is both.**
+
 ### The falsification is WITHDRAWN, and the two "false positives" split (2026-09-07)
 
 `--verify-host` now audits the **exact diff case 17 audits, minus the seeded commit** — same base,
@@ -1179,7 +1229,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **197** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **200** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
