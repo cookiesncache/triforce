@@ -976,7 +976,12 @@ PYDEF
     # realistic noise a single round has to search through; a line count that
     # does not separate the two cannot support or refute that claim.
     _sloc=$(grep -c '^[+-][^+-]' "$WORK/seeded-diff.txt" 2>/dev/null || true)
-    _hloc=$(git diff -W "$HARD_BASE".."$(git rev-parse HEAD~1)" | grep -c '^[+-][^+-]' 2>/dev/null || true)
+    # The host's own diff is kept as a FILE, not just a count. It is the noise
+    # measurement and it is also arm (e)'s floor control: the exact diff
+    # --verify-host proved this host returns clean on, which is the only clean
+    # diff in this case that the reviewer has already been measured against.
+    git diff -W "$HARD_BASE".."$(git rev-parse HEAD~1)" > "$WORK/host-only-diff.txt"
+    _hloc=$(grep -c '^[+-][^+-]' "$WORK/host-only-diff.txt" 2>/dev/null || true)
     _seedloc=$(( ${_sloc:-0} - ${_hloc:-0} ))
     echo "        corpus: django $DJ_HOST, ${_dloc:-0} changed lines, $(printf '%s' "$DJ_FILES" | wc -w | tr -d ' ') files"
     echo "        host subject (C1): $DJ_SUBJ"
@@ -1367,6 +1372,47 @@ JS
   audit "$WORK/d1.json" 2 "A previous reviewer audited this exact diff and cited these criteria: ${_prevd:-none}. Check each of those citations against the diff yourself, then report the CORRECTED set: keep the ones the diff supports, drop any it does not, and add any the previous reviewer missed. If the previous set is exactly right, restate it unchanged — that is a complete answer. If nothing in this diff is a violation, emit an empty array — that is also a complete answer."
   crits "$WORK/d1.json" | sort -u > "$WORK/arm-d.txt"
 
+  # (e) ONE round, told to WALK THE CRITERIA LIST. Half the budget of (a).
+  #
+  # Measured 2026-09-07 on both verified hosts: a single round finds S1, S2 and
+  # S6 every time and misses S4 every time. That is a criterion-shaped gap, not
+  # a random one. Arm (c) closes it on the smaller host by naming what round 1
+  # cited and asking what it missed -- which points attention at the UNCITED
+  # criteria. If that pointing is the whole mechanism, then one round doing it
+  # directly should recover S4 at HALF the audits, and beat (c) as well as (a).
+  # If it does, chaining is the expensive way to buy something a prompt buys.
+  #
+  # ONE audit, deliberately. The hypothesis names the budget, so the arm has to
+  # spend it: (a) and (c) are K=2, (b) is 3, and (e) is 1.
+  #
+  # THE PROMPT IS THE HAZARD, NOT THE ARM. "Work through every criterion" is one
+  # careless sentence from "find something for every criterion", and INVARIANT 1
+  # forbids a floor in any prompt. Case 15 measured a floor manufacturing 1-2
+  # findings per run on a diff with nothing wrong in it. So the wording says
+  # plainly that most criteria are not violated and that finding none is a
+  # complete answer -- and it is not trusted, it is CONTROLLED, below.
+  _eprompt="Work through the frozen criteria one at a time, in the order listed. For each one, decide whether this diff violates it. Most criteria are not violated by any given diff, and that is the expected answer for most of them. Report only the ones this diff actually violates. If it violates none of them, emit an empty array — that is a complete and correct answer."
+  audit "$WORK/e1.json" 2 "$_eprompt"
+  crits "$WORK/e1.json" | sort -u > "$WORK/arm-e.txt"
+
+  # FLOOR CONTROL FOR ARM (e). A green here could not otherwise have been red.
+  #
+  # The same prompt, on the HOST'S OWN DIFF WITH NOTHING SEEDED -- the diff
+  # --verify-host already proved this host returns clean on under the ordinary
+  # prompt. Any citation arm (e) produces there is manufactured by the criteria
+  # walk and by nothing else, which is exactly Cause A. If that happens, arm
+  # (e)'s score is VOID: a prompt that invents findings on a clean diff cannot
+  # be credited for finding one on a dirty diff.
+  EFLOOR_RAN=0; EFLOOR=""
+  if [ -s "$WORK/host-only-diff.txt" ]; then
+    EFLOOR_RAN=1
+    _esaved="$DIFF_FILE"
+    DIFF_FILE="$WORK/host-only-diff.txt"
+    audit "$WORK/efloor.json" 2 "$_eprompt"
+    DIFF_FILE="$_esaved"
+    EFLOOR=$(crits "$WORK/efloor.json" | tr '\n' ' ' | sed 's/ *$//')
+  fi
+
   # Ground truth for this corpus, judged from the CODE and nothing else. Five
   # of the seven criteria are violated:
   #
@@ -1440,6 +1486,7 @@ JS
   score "$WORK/arm-c.txt" "(c) K sequential rounds";   F1C="$SCORE_F1"
   score "$WORK/arm-d.txt" "(d) revision round, may drop"; F1D="$SCORE_F1"
   TPD="$SCORE_TP"; FPD="$SCORE_FP"
+  score "$WORK/arm-e.txt" "(e) ONE round, criteria walk"; F1E="$SCORE_F1"
   echo "        arm (c) chains: round n+1 is told what round n cited and asked"
   echo "        for what it missed, with an explicit empty-array escape so the"
   echo "        instruction is not a finding floor. Arm (d) is a REVISION round:"
@@ -1624,6 +1671,48 @@ JS
       echo "        evidence. If it replicates, the design is REVISED, not defended."
     elif [ -n "${F1D:-}" ]; then
       echo "  note  the revision arm did not beat (a): (d) F1=$F1D vs (a) F1=$F1A."
+    fi
+
+    # ---- arm (e): the criteria walk, at HALF the budget --------------------
+    #
+    # THE FLOOR CONTROL IS READ BEFORE THE SCORE, always. A prompt that invents
+    # findings on a clean diff must not be credited for finding one on a dirty
+    # diff, and printing its F1 first invites exactly that credit.
+    if [ -z "${F1E:-}" ]; then
+      echo "  note  arm (e) produced no numeric F1. Nothing is claimed for it."
+    elif [ "$EFLOOR_RAN" != 1 ]; then
+      echo "  note  arm (e)'s floor control did NOT run: this corpus has no clean"
+      echo "        host diff to run it on. (e) F1=$F1E is UNCONTROLLED -- nothing"
+      echo "        here rules out that the criteria walk manufactured it. Run the"
+      echo "        django corpus, where the unseeded host diff is the control."
+    elif [ -n "$EFLOOR" ]; then
+      bad "ARM (e) IS A FINDING FLOOR: it cited $EFLOOR on the host's own diff, unseeded."
+      echo "        That diff is the one --verify-host proved this host returns CLEAN"
+      echo "        on under the ordinary prompt. So the criteria walk manufactured"
+      echo "        those citations and nothing else did. That is Cause A, reproduced"
+      echo "        by a prompt written specifically to avoid it."
+      echo "        Arm (e)'s score of $F1E is VOID. INVARIANT 1 is not negotiable,"
+      echo "        and recall bought with invention is not recall."
+    else
+      ok "arm (e) is NOT a floor: the criteria walk returned clean on the unseeded host diff"
+      if awk -v a="$F1A" -v e="$F1E" 'BEGIN{exit !(e>a)}'; then
+        bad "FALSIFIED BY THE CRITERIA WALK: (e) F1=$F1E beats (a) F1=$F1A on HALF the audits."
+        echo "        (e) spends ONE audit; (a) and (c) spend two, (b) three. So this is"
+        echo "        neither more compute nor chaining -- it is the PROMPT. If it"
+        echo "        replicates, chaining is the expensive way to buy what a single"
+        echo "        instruction already buys, and the design is REVISED, not defended."
+        echo "        cited by (a): $(tr '\n' ' ' < "$WORK/arm-a.txt")"
+        echo "        cited by (e): $(tr '\n' ' ' < "$WORK/arm-e.txt")"
+      elif [ -n "${F1C:-}" ] && awk -v a="$F1A" -v c="$F1C" 'BEGIN{exit !(c>a)}'; then
+        echo "  note  the criteria walk did NOT beat (a) ($F1E vs $F1A) on a run where"
+        echo "        the CHAINED arm DID ($F1C). Pointing at uncited criteria is then"
+        echo "        not the whole of what chaining buys: seeing the previous round's"
+        echo "        actual citations is doing work a bare criteria walk does not."
+        echo "        cited by (e): $(tr '\n' ' ' < "$WORK/arm-e.txt")"
+      else
+        echo "  note  the criteria walk did not beat (a): (e) F1=$F1E vs (a) F1=$F1A."
+        echo "        cited by (e): $(tr '\n' ' ' < "$WORK/arm-e.txt")"
+      fi
     fi
   fi
   echo

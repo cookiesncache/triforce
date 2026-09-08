@@ -936,6 +936,56 @@ else
     sbad "case 17 has no way to verify its host on the exact diff it audits"
   fi
 
+  # ---- arm (e), the criteria walk, and the floor it could have been ------
+  #
+  # Arm (e) tests whether arm (c)'s win is really about chaining or just about
+  # pointing at the uncited criteria. Its prompt is the hazard: "work through
+  # every criterion" is one careless sentence from "find something for every
+  # criterion", and case 15 measured a floor manufacturing findings on a diff
+  # with nothing wrong in it. So the arm is not trusted on its wording -- it is
+  # controlled, and the control is read before the score.
+  if printf '%s' "$_l17" | grep -qF 'arm-e.txt'; then
+    sok "arm (e) exists -- one round told to walk the criteria list"
+
+    # ONE audit. The hypothesis is about the budget, so the arm must spend it.
+    _ecalls=$(printf '%s' "$_l17" | grep -cF 'audit "$WORK/e1.json"')
+    if [ "$_ecalls" = "1" ]; then
+      sok "arm (e) spends exactly one audit, half of (a)'s -- the budget is the claim"
+    else
+      sbad "arm (e) does not spend exactly one audit ($_ecalls), so 'at half the budget' is not what it measures"
+    fi
+
+    # The floor control must exist, must run on the UNSEEDED host diff, and must
+    # be read BEFORE the score is credited.
+    if printf '%s' "$_l17" | grep -qF 'audit "$WORK/efloor.json"' \
+       && printf '%s' "$_l17" | grep -qF 'DIFF_FILE="$WORK/host-only-diff.txt"'; then
+      sok "arm (e)'s prompt is controlled against the unseeded host diff, not trusted on its wording"
+    else
+      sbad "arm (e) has no floor control -- a prompt that invents findings would score as recall"
+    fi
+    if printf '%s' "$_l17" | grep -qF 'ARM (e) IS A FINDING FLOOR'; then
+      sok "a floor verdict VOIDS arm (e)'s score rather than annotating it"
+    else
+      sbad "arm (e) can report an F1 from a prompt that manufactured findings on a clean diff"
+    fi
+    # And the control must be restored, or every later arm audits the wrong diff.
+    if printf '%s' "$_l17" | grep -qF 'DIFF_FILE="$_esaved"'; then
+      sok "the floor control restores DIFF_FILE, so it cannot silently redirect the other arms"
+    else
+      sbad "the floor control leaves DIFF_FILE pointing at the clean diff -- every later arm audits the wrong thing"
+    fi
+
+    # An uncontrolled score must SAY it is uncontrolled. The hard corpus has no
+    # clean host diff, so the control cannot run there.
+    if printf '%s' "$_l17" | grep -qF 'is UNCONTROLLED'; then
+      sok "arm (e) says so when its floor control could not run, instead of reporting a bare F1"
+    else
+      sbad "arm (e) reports the same F1 whether or not its floor control ran"
+    fi
+  else
+    sbad "arm (e) is absent although it is the cheapest open question case 17 has"
+  fi
+
   # ---- the host must supply NOISE, not just a place to put the seeds -----
   #
   # DJ_FILES is capped at six files and the cap does not pick the six that
@@ -1403,7 +1453,7 @@ defer "case 12,13 (idempotence; fix-and-re-audit rounds 1-3) — need a live mod
 defer "case 15 (floor ablation) — needs a live model; the floor-free static check above is its cheap proxy, not a substitute. Run acceptance/live-cases.sh --case 15."
 defer "case 16 (effective false positives over rolling windows) — needs production audits to accumulate."
 defer "case 17's verification rows have NO FINGERPRINT of the diff they certify. A row says 'this host is clean', but what was audited depends on DJ_FILES, which is the host's non-test .py files capped at six -- and the cap does not pick the six that carry the change. Change that selection (picking the largest-diff files is the obvious improvement) and every stale CLEAN row silently certifies a diff that no longer exists. That is the same failure class as verifying a superset: a guard attached to the wrong artifact. Fix: record a hash of the sorted file list in the row, recompute it at the gate, and refuse on mismatch -- which means a row without one is not verified, so the existing rows must be re-run. Deferred because it costs a re-verification of every host and the selection has not changed yet."
-defer "case 17 arm (e), a SINGLE round told to walk the criteria list — NOT BUILT, and the cheapest open question. Across both verified hosts, one round finds S1, S2 and S6 every time and misses S4 every time: a criterion-shaped gap, not a random one. Arm (c) closes it by naming what round 1 cited and asking what it missed, which points attention at the UNCITED criteria — and it wins only where S4 is reachable at all (3 of 3 on 804660d6, 0 of 2 on the noisier 0f581cd2, where no arm reached S4). If pointing at uncited criteria is the whole mechanism, one round doing it explicitly should recover S4 at HALF the audits and beat (c) as well as (a). Building it is a design decision, not a measurement, so it waits for a call. INVARIANT 1 is the hazard: 'cover every criterion' is one careless sentence from a finding floor, and case 15 measured a floor manufacturing false positives on a clean diff."
+defer "case 17 arm (e), a SINGLE round told to walk the criteria list — BUILT 2026-09-07, NEVER RUN. Its six static checks pass; not one audit has been executed, so there is no number and none is implied. Two runs on 804660d6 were started and KILLED mid-flight; a killed run is a non-execution, and a non-execution is not a result. What it tests: across both verified hosts a single round finds S1, S2 and S6 every time and misses S4 every time — a criterion-shaped gap. Arm (c) closes it, but only where S4 is reachable (3 of 3 on 804660d6, 0 of 2 on 0f581cd2 where no arm reached it). If pointing at the uncited criteria is arm (c)'s whole mechanism, arm (e) should recover S4 on ONE audit and beat (c) as well as (a). Read the FLOOR CONTROL FIRST: (e) reruns its own prompt on the unseeded host diff, and any citation there means the criteria walk manufactured it — Cause A — and VOIDS the score however good it looks. Run: acceptance/live-cases.sh --case 17 --corpus django --repo <clone> --host 804660d685a5abd49fc66ba20c98d1a523f28f9f, at least twice, on the host where (c) wins."
 defer "case 17 arm (d), the revision round — STRUCTURALLY STUCK, not merely unrun. It withdrew nothing in 3 of 4 runs on 804660d6 and 2 of 2 on 0f581cd2, and correctly said so each time. Its only mechanism is removing a false positive; a host clean enough for a readable truth set produces none (FP=0 in every arm of every run on both verified hosts), and the one corpus that did produce them — f30acb18 — has a truth set that is not readable. It needs a host that is clean AND error-provoking. Nothing so far is both, and it is not obvious such a host exists."
 
 echo

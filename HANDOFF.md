@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 200 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 206 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -1291,7 +1291,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **200** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **206** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
