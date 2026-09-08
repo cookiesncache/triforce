@@ -691,9 +691,71 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### It does NOT generalise: chaining wins only where the missed defect is recoverable (2026-09-07)
+
+The second host verified CLEAN, `0f581cd2`, was run twice. **All four arms tied at 0.857 in both
+runs, and `S4` was reached by NO arm.** Every run below is on a host verified clean on the exact
+diff it audits; `f30acb18` appears nowhere.
+
+```
+host       run  noise      (a)     (b)     (c)     (d)     what happened to S4
+804660d6   1    ~250 ln    0.857   0.857   1.000   --      found by (c) ONLY
+804660d6   C    ~250 ln    1.000   1.000   0.857   1.000   found by (a) -- CEILING, refused
+804660d6   D    ~250 ln    0.857   0.857   1.000   0.857   found by (c) ONLY
+804660d6   E    ~250 ln    0.857   0.857   1.000   0.857   found by (c) ONLY
+0f581cd2   F    375 ln     0.857   0.857   0.857   0.857   found by NO ARM
+0f581cd2   G    375 ln     0.857   0.857   0.857   0.857   found by NO ARM
+```
+
+**Tally, counting only runs where the comparison had power:**
+
+```
+(b) vs (a)   6 runs, 6 TIES, 0 wins.  Arm (b) has never beaten one round on any host, ever.
+(c) vs (a)   5 informative runs: 3 WINS, 2 ties. (Run C excluded -- (a) at ceiling, so (c)
+             could not win; it lost there, which is equally uninformative.)
+```
+
+**The whole effect is one criterion, and the discriminator is whether it is reachable at all.** `S4`
+is the marginal seed by construction: `profile.save()` then `settings_obj.save()` with no
+`transaction.atomic()` is a real "failed or impossible rollback", but it is the only one of the four
+that looks like ordinary code. The other three announce themselves — a `range(1, len(...))`
+off-by-one, an `.all().delete()` that ignores its `keys` argument, a read-modify-write counter — and
+every arm finds all three, every time, on both hosts.
+
+So the reading is:
+
+- Where `S4` is **missed but recoverable** (the smaller host), a chained second round recovers it and
+  an independent one does not. That is a real effect and it replicated 3 of 3.
+- Where `S4` is a **systematic blind spot** (the noisier host, 375 lines), no arm reaches it and no
+  amount of rounds can. The harness says this itself: *"A criterion no arm reached is a SYSTEMATIC
+  blind spot, not a sampling miss. Extra rounds cannot recover what the reviewer never finds."*
+
+**Neither host was a ceiling for this comparison.** On `0f581cd2` arm (a) scored 0.857, so (b) and
+(c) had room to win and did not. Those two runs are a genuine negative result, not a refusal.
+
+**What this does and does not license.**
+
+- The issue's literal clause — a forced second *independent* round — **holds, 6 of 6, on every host
+  ever run.** Nothing here touches it.
+- "One round is enough" is **falsified in one regime and unrefuted in the other**, on n=2 hosts. That
+  is not enough to revise the design, and it is more than enough to stop calling the premise
+  established.
+- The effect rides entirely on the hardest of four seeds. A corpus whose swing criterion is always
+  the same one is measuring that criterion at least as much as it is measuring rounds.
+
+**The cheaper experiment is now the obvious next one.** On BOTH hosts, one round misses `S4` while
+finding the other three — a consistent, criterion-shaped gap, not a random one. Arm (c) closes it by
+naming the already-cited criteria and asking what was missed, which points attention at the uncited
+ones. If that is the mechanism, then **a single round told to walk the criteria list explicitly**
+should recover `S4` at half the audits, and would beat (c) as well as (a). That arm does not exist
+yet. Building it is a design decision, not a measurement, so it is written down rather than done.
+
 ### THE SEQUENTIAL ARM BEATS ONE ROUND, on a verified host, 3 informative runs of 3 (2026-09-07)
 
-Host `804660d6`, the only one verified CLEAN on the exact diff it audits. Every run below is on that
+> **This is one host of two. It did NOT reproduce on `0f581cd2` — see the section above. Everything
+> below is correct for `804660d6` and is not the conclusion.**
+
+Host `804660d6`, the first one verified CLEAN on the exact diff it audits. Every run below is on that
 host, and `f30acb18` contributes nothing to this table.
 
 ```
