@@ -142,12 +142,21 @@ bash acceptance/live-cases.sh --case 15   # PASSED — 2026-09-06, n=4, on a REA
                                          #   pre-gate == post-gate every time, so THE GATE DOES
                                          #   NOT REMOVE THEM. Cause A confirmed. The earlier
                                          #   "inconclusive" was an untreated arm; see below.
-bash acceptance/live-cases.sh --case 17   # NOT FALSIFIED — 2026-09-06, n=3 on the django
-                                         #   corpus, 2 hosts. (b) never beat (a): 2 ties, 1 loss.
-                                         #   The ceiling is gone and the clause held. Arm (c) is
-                                         #   INCONSISTENT: 1 win, 1 loss, 1 tie. First false
-                                         #   positives ever measured, and they are UNCHARACTERISED
-                                         #   — read the section before quoting any F1.
+bash acceptance/live-cases.sh --case 17   # SPLIT VERDICT — 2026-09-10, 10 runs on 2 hosts
+                                         #   verified CLEAN on the exact diff they audit.
+                                         #   The issue's LITERAL clause HOLDS: arm (b), a forced
+                                         #   INDEPENDENT round, has never beaten one round --
+                                         #   10 runs, 10 ties, 0 wins, on any host, ever.
+                                         #   Arm (c), a CHAINED round at the SAME budget as (a),
+                                         #   beats it on BOTH hosts: 5 wins, 2 ties over 7
+                                         #   informative runs (3 ceilings correctly refused).
+                                         #   Arm (e) ties (a) at HALF the budget, n=2.
+                                         #   Prefer --host 0f581cd2...; it has never ceilinged.
+                                         #   The 2026-09-06 text here -- "(c) is INCONSISTENT",
+                                         #   "first false positives ever measured" -- is
+                                         #   SUPERSEDED: that n=3 predated --verify-host, and
+                                         #   those false positives were later WITHDRAWN. Read
+                                         #   the 2026-09-07 and 2026-09-10 sections, not this.
 ```
 
 Then, still to be **built**, not just run:
@@ -1446,18 +1455,36 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 
 ## Definition of done — current state
 
-**2 of 10 met, one definitively NOT met, one inconclusive.** `Tier 1 checks pass` ✅ and
-`clean-return rate ≥ 70%` ✅ (91%, 11/12). **Idempotence ❌** — case 12 measured and failed
-(S4 leaked on re-audit of an unchanged diff); a measured negative, not an open item.
+**This block carried two wrong statuses until 2026-09-10 and no longer states a fraction.**
+It read "2 of 10 met" while marking three ✅ beneath it, and it called the floor ablation
+inconclusive after the n=4 run had confirmed it. The per-criterion status below is sourced from
+the sections above and is current. The **count** against the issue's list of ten is deliberately
+not restated here: that list lives in the issue, this file is required to quote the issue rather
+than paraphrase it, and a fraction reproduced from memory is how the last one went stale.
+Reconcile the tally against the issue before quoting one.
+
+`Tier 1 checks pass` ✅. `clean-return rate ≥ 70%` ✅ — 91% (11/12), case 11.
 **Fix-and-re-audit drift ✅** — case 13, drift=0 on a fixture that can now show drift, n=1.
-**Floor ablation ⚠️** — case 15 ran twice, the second time with pre-gate visibility, and did
-not confirm the floor is the mechanism (0 vs 0 both post- and pre-gate). Not a gating artifact.
-**The one-round premise ⚠️ UNTESTED** — case 17 ran, every arm scored F1=1.000, and arm (b)
-could not beat a perfect arm (a). A ceiling, not a corroboration. The corpus is the blocker.
+**Idempotence ❌** — case 12 measured and failed (S4 leaked on re-audit of an unchanged diff),
+and since CHARACTERISED: the leak is a RELABEL, 1 relabel and 0 new citations. A measured
+negative, and a smaller one than "the schema is leaking" — not an open item.
+**Floor ablation ✅ — Cause A CONFIRMED, n=4.** no-floor=0 in 4/4 runs, floor=1,1,1,2, and
+pre-gate == post-gate in every run, so the gate does NOT remove floor-induced false positives.
+Removing the floor is the only defence, not one of two. (The "inconclusive" this block used to
+report was an untreated arm and is superseded — see the n=4 section above.)
+**The one-round premise ⚠️ MEASURED, and the verdict is SPLIT.** 10 runs across 2 hosts verified
+CLEAN on the exact diff they audit. The issue's literal clause — a forced second INDEPENDENT
+round — **HOLDS: arm (b) has never beaten one round, 10 of 10, on any host.** A CHAINED second
+round at the same audit budget **does** beat it, on **both** hosts: 5 wins, 2 ties over 7
+informative runs. So "one round is enough" is defended exactly as specified and falsified as a
+general claim. That is a decision for the author, not a measurement gap — the corpus stopped
+being the blocker on 2026-09-07, when --verify-host gave the corpus its first readable hosts.
 
 Nothing is blocked on access any more — all three environmental blockers are cleared.
-The remaining eight are blocked on **work**, not permission, except case 16, which
-needs production audits to accumulate.
+Whatever remains is blocked on **work**, not permission, except case 16, which needs production
+audits to accumulate, and the one-round premise, which is blocked on a DECISION rather than on
+either. (This sentence used to say "the remaining eight", carried from the fraction removed
+above; recount it against the issue rather than trusting a number from here.)
 
 Cases 2–6 are green as of 2026-09-03, and green *meaningfully* for the first time:
 case 3 previously could not have failed. **Case 12 has now failed for real**, on the corrected
