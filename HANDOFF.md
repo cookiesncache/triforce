@@ -691,7 +691,56 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
-### The criteria walk is NOT arm (c)'s mechanism — arm (e) ran (2026-09-09, n=1 informative)
+### Chaining DOES generalise — the second host's "blind spot" was a sampling miss (2026-09-10)
+
+Run K, on `0f581cd2`: the noisier of the two verified-clean hosts, 375 host lines against 15 seeded.
+It was launched to get arm (e) to n=2 on a host that does not ceiling, following this document's own
+recommendation to spend the run on a harder corpus rather than on a fourth attempt at `804660d6`.
+It did that — and it also **overturned a conclusion this document has carried since 2026-09-07.**
+
+```
+run   date         (a)     (b)     (c)     (d)     (e)     cited by (e)   floor control
+K     2026-09-10   0.857   0.857   1.000   0.857   0.857   S1 S2 S6       CLEAN
+```
+
+**Arm (c) reached `S4` on `0f581cd2`.** Runs F and G found that no arm reached it, and this document
+turned that into a structural claim: that on the noisier host `S4` is a *systematic blind spot* and
+"no amount of rounds can" recover it. Run K recovers it, with the same chained arm that wins on the
+other host, at the same audit budget as (a). **That claim was an inference from n=2, and it was
+wrong.** Two runs in which nobody found a thing are not evidence that it cannot be found.
+
+The harness is not implicated. Its blind-spot line is scoped to a single run — a criterion no arm
+reached *in that run* bounds what *that run's* (b) could have won — and on run K it never printed,
+because (c) reached `S4`. The over-reach was in the prose here, promoting a within-run bound into a
+property of the host.
+
+**Corrected reading of chaining:** arm (c) beats one round on BOTH verified hosts — 5 wins and 2
+ties across 7 informative runs. The host changes how OFTEN chaining wins, not whether it can. The
+"it does not generalise" section is refuted and marked as such below.
+
+**Arm (e) is now n=2, and it ties both times.**
+
+- **Floor control CLEAN again,** on a second host: the criteria walk cited nothing on the unseeded
+  host diff. INVARIANT 1 holds for it on both hosts it has faced, so both scores are readable.
+- `F1=0.857`, `FP=0`, cited `S1 S2 S6`, missed `S4` — the same criterion-shaped gap, and the same
+  gap arm (c) closed on the very same run.
+- It **tied (a) on half the budget** for the second time, on a different host.
+
+**The mechanism refutation replicates, 2 of 2.** On both informative runs, arm (e) failed to reach
+`S4` on a run where the chained arm reached it, with the criteria list in front of it the whole
+time. Pointing an auditor at the criteria it has not cited is not what chaining buys; seeing the
+previous round's ACTUAL citations is.
+
+**What is still not licensed.** "Ties (a) at half the cost" is n=2 across two hosts — a replication,
+not a mandate. Halving the product's audit budget is a design change, and two ties is not the
+evidence to make it on. What IS settled at n=2 is the negative: the criteria walk is not the
+mechanism, and nothing here licenses building one into the product.
+
+**The cheaper-corpus recommendation was right, and it cost one run.** `0f581cd2` is now 3
+informative runs in 3 and has never ceilinged; `804660d6` is 4 in 7. Prefer `0f581cd2` for future
+case-17 runs, and note that the arm it makes hardest to study is (d), which still withdrew nothing.
+
+### The criteria walk is NOT arm (c)'s mechanism — arm (e) ran (2026-09-09) — now n=2, see 2026-09-10 above
 
 Arm (e) — a SINGLE audit told to work through the frozen criteria one at a time — has been
 executed. It was built on 2026-09-07 and started and killed three times before this; those were
@@ -747,7 +796,16 @@ corpus — one where arm (a) does not reach ceiling — not more attempts here.
 cost" is an efficiency claim no one should act on from a single run. This was tried and did not
 resolve.
 
-### It does NOT generalise: chaining wins only where the missed defect is recoverable (2026-09-07)
+> **Resolved 2026-09-10 — on the OTHER host.** Run K on `0f581cd2` gave arm (e) its second
+> informative run: floor control CLEAN again, `F1=0.857`, `FP=0`, cited `S1 S2 S6`, missed `S4`, and
+> tied (a) on half the budget for the second time. The mechanism refutation in this entry now
+> replicates 2 of 2. See the 2026-09-10 entry above.
+
+### It does NOT generalise: chaining wins only where the missed defect is recoverable (2026-09-07) — REFUTED 2026-09-10
+
+> **The heading above is the claim this entry made, and run K falsified it.** Chaining won on
+> `0f581cd2` too. The table and tally in this section are kept current because they are the live
+> record; the *reading* below them is the 2026-09-07 reading, corrected inline where it is wrong.
 
 The second host verified CLEAN, `0f581cd2`, was run twice. **All four arms tied at 0.857 in both
 runs, and `S4` was reached by NO arm.** Every run below is on a host verified clean on the exact
@@ -764,16 +822,17 @@ host       run  noise      (a)     (b)     (c)     (d)     (e)     what happened
 804660d6   H    253 ln     0.857   0.857   1.000   0.857   0.857   found by (c) ONLY
 804660d6   I    253 ln     1.000   1.000   1.000   1.000   0.857   found by every arm but (e) -- CEILING, refused
 804660d6   J    253 ln     1.000   1.000   1.000   1.000   1.000   found by EVERY arm -- CEILING, refused
+0f581cd2   K    375 ln     0.857   0.857   1.000   0.857   0.857   found by (c) ONLY -- on the 'blind spot' host
 ```
 
 **Tally, counting only runs where the comparison had power:**
 
 ```
-(b) vs (a)   9 runs, 9 TIES, 0 wins.  Arm (b) has never beaten one round on any host, ever.
-(c) vs (a)   6 informative runs: 4 WINS, 2 ties. (Runs C, I and J excluded -- (a) at ceiling,
-             so (c) could not win.)
-(e) vs (a)   1 informative run:  1 TIE, on HALF the budget. STILL n=1: the replication attempted
-             on 2026-09-09 drew a ceiling and yielded nothing.
+(b) vs (a)   10 runs, 10 TIES, 0 wins. Arm (b) has never beaten one round on any host, ever.
+(c) vs (a)   7 informative runs: 5 WINS, 2 ties, and it has now won on BOTH hosts. (Runs C, I
+             and J excluded -- (a) at ceiling, so (c) could not win.)
+(e) vs (a)   2 informative runs: 2 TIES, on HALF the budget, on two different hosts. The
+             replication happened on 2026-09-10, on 0f581cd2 rather than by retrying 804660d6.
 ```
 
 **The whole effect is one criterion, and the discriminator is whether it is reachable at all.** `S4`
@@ -787,20 +846,26 @@ So the reading is:
 
 - Where `S4` is **missed but recoverable** (the smaller host), a chained second round recovers it and
   an independent one does not. That is a real effect and it replicated 3 of 3.
-- Where `S4` is a **systematic blind spot** (the noisier host, 375 lines), no arm reaches it and no
-  amount of rounds can. The harness says this itself: *"A criterion no arm reached is a SYSTEMATIC
-  blind spot, not a sampling miss. Extra rounds cannot recover what the reviewer never finds."*
+- ~~Where `S4` is a **systematic blind spot** (the noisier host, 375 lines), no arm reaches it and
+  no amount of rounds can.~~ **REFUTED by run K on 2026-09-10: arm (c) reached `S4` on `0f581cd2`.**
+  This bullet generalised a within-run bound into a property of the host on the strength of two
+  runs where nobody found it, which is not evidence that it cannot be found. The harness line it
+  leaned on — *"A criterion no arm reached is a SYSTEMATIC blind spot, not a sampling miss"* — is
+  scoped to a SINGLE run and bounds only that run's (b); it never licensed the cross-run claim.
 
 **Neither host was a ceiling for this comparison.** On `0f581cd2` arm (a) scored 0.857, so (b) and
-(c) had room to win and did not. Those two runs are a genuine negative result, not a refusal.
+(c) had room to win and did not. Those two runs are a genuine negative result, not a refusal. **On
+the third run of this host, run K, (c) took that room and won** — so the negative result was a
+negative result about two runs, not about the host.
 
 **What this does and does not license.**
 
 - The issue's literal clause — a forced second *independent* round — **holds, 6 of 6, on every host
   ever run.** Nothing here touches it.
-- "One round is enough" is **falsified in one regime and unrefuted in the other**, on n=2 hosts. That
-  is not enough to revise the design, and it is more than enough to stop calling the premise
-  established.
+- ~~"One round is enough" is **falsified in one regime and unrefuted in the other**, on n=2 hosts.~~
+  **Superseded 2026-09-10:** it is falsified in BOTH regimes. Arm (c) has beaten one round on both
+  verified hosts. That is not enough to revise the design, and it is more than enough to stop
+  calling the premise established.
 - The effect rides entirely on the hardest of four seeds. A corpus whose swing criterion is always
   the same one is measuring that criterion at least as much as it is measuring rounds.
 
@@ -817,8 +882,10 @@ yet. Building it is a design decision, not a measurement, so it is written down 
 
 ### THE SEQUENTIAL ARM BEATS ONE ROUND, on a verified host, 3 informative runs of 3 (2026-09-07)
 
-> **This is one host of two. It did NOT reproduce on `0f581cd2` — see the section above. Everything
-> below is correct for `804660d6` and is not the conclusion.**
+> **This was one host of two, and it HAS since reproduced on the other.** As written on
+> 2026-09-07 it had not reproduced on `0f581cd2`; run K on 2026-09-10 changed that — arm (c)
+> scored 1.000 on that host too. Everything below is correct for `804660d6`, and the cross-host
+> conclusion is in the 2026-09-10 entry above.
 
 Host `804660d6`, the first one verified CLEAN on the exact diff it audits. Every run below is on that
 host, and `f30acb18` contributes nothing to this table.
