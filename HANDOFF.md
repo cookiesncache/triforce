@@ -691,6 +691,47 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### The criteria walk is NOT arm (c)'s mechanism — arm (e) ran (2026-09-09, n=1 informative)
+
+Arm (e) — a SINGLE audit told to work through the frozen criteria one at a time — has been
+executed. It was built on 2026-09-07 and started and killed three times before this; those were
+non-executions and are not in the table. Two runs on `804660d6`: **one informative, one a refused
+ceiling.** The floor control was read before the score, as the harness enforces.
+
+```
+run   date         (a)     (b)     (c)     (d)     (e)     cited by (e)   floor control
+H     2026-09-09   0.857   0.857   1.000   0.857   0.857   S1 S2 S6       CLEAN
+I     2026-09-09   1.000   1.000   1.000   1.000   0.857   --             ceiling -- refused
+```
+
+**Run H is the whole result, and arm (e) neither manufactured findings nor closed the gap.**
+
+- **It is not a finding floor.** Re-run on the unseeded host diff — the one `--verify-host` proved
+  this host returns CLEAN under the ordinary prompt — the criteria walk cited **nothing**. Walking
+  a checklist item by item is the most obvious way to manufacture Cause A, and this prompt did not.
+  INVARIANT 1 holds for it. That is a narrow but real positive finding, and it is the only reason
+  the rest of the row is readable at all.
+- **It cited `S1 S2 S6` and missed `S4`** — the identical, criterion-shaped gap one round has on
+  every host ever run.
+- **It tied (a) on HALF the budget**: one audit, same F1, `FP=0`.
+
+**So the 2026-09-07 mechanism hypothesis is wrong.** That entry predicted a criteria walk would
+recover `S4` at half the audits and beat (c) as well as (a). It recovered nothing and beat neither,
+while arm (c) scored 1.000 on the same run and did reach `S4`. The criteria list was in front of arm
+(e) the entire time. **What arm (c) buys is therefore not "attend to the criteria you did not cite"
+— it is seeing the previous round's ACTUAL CITATIONS.** Those are different things, and only the
+second one requires a chain.
+
+**Run I is refused, and it is refused FOR ARM (e) TOO.** Arm (a) scored 4/4 there, so no arm could
+beat it. Reading (e)'s 0.857 against that as a loss would be reading a result off a comparison with
+no power to falsify — exactly the error run C was refused for. It is not counted.
+
+**Two of the six runs on `804660d6` are now ceilings.** That is a standing property of this host,
+not a fluke: any future n here should budget for discarding roughly one run in three.
+
+**Still deferred.** One informative run is not a replication, and "ties (a) at half the cost" is an
+efficiency claim no one should act on from n=1.
+
 ### It does NOT generalise: chaining wins only where the missed defect is recoverable (2026-09-07)
 
 The second host verified CLEAN, `0f581cd2`, was run twice. **All four arms tied at 0.857 in both
@@ -698,21 +739,25 @@ runs, and `S4` was reached by NO arm.** Every run below is on a host verified cl
 diff it audits; `f30acb18` appears nowhere.
 
 ```
-host       run  noise      (a)     (b)     (c)     (d)     what happened to S4
-804660d6   1    ~250 ln    0.857   0.857   1.000   --      found by (c) ONLY
-804660d6   C    ~250 ln    1.000   1.000   0.857   1.000   found by (a) -- CEILING, refused
-804660d6   D    ~250 ln    0.857   0.857   1.000   0.857   found by (c) ONLY
-804660d6   E    ~250 ln    0.857   0.857   1.000   0.857   found by (c) ONLY
-0f581cd2   F    375 ln     0.857   0.857   0.857   0.857   found by NO ARM
-0f581cd2   G    375 ln     0.857   0.857   0.857   0.857   found by NO ARM
+host       run  noise      (a)     (b)     (c)     (d)     (e)     what happened to S4
+804660d6   1    ~250 ln    0.857   0.857   1.000   --      --      found by (c) ONLY
+804660d6   C    ~250 ln    1.000   1.000   0.857   1.000   --      found by (a) -- CEILING, refused
+804660d6   D    ~250 ln    0.857   0.857   1.000   0.857   --      found by (c) ONLY
+804660d6   E    ~250 ln    0.857   0.857   1.000   0.857   --      found by (c) ONLY
+0f581cd2   F    375 ln     0.857   0.857   0.857   0.857   --      found by NO ARM
+0f581cd2   G    375 ln     0.857   0.857   0.857   0.857   --      found by NO ARM
+804660d6   H    253 ln     0.857   0.857   1.000   0.857   0.857   found by (c) ONLY
+804660d6   I    253 ln     1.000   1.000   1.000   1.000   0.857   found by every arm but (e) -- CEILING, refused
 ```
 
 **Tally, counting only runs where the comparison had power:**
 
 ```
-(b) vs (a)   6 runs, 6 TIES, 0 wins.  Arm (b) has never beaten one round on any host, ever.
-(c) vs (a)   5 informative runs: 3 WINS, 2 ties. (Run C excluded -- (a) at ceiling, so (c)
-             could not win; it lost there, which is equally uninformative.)
+(b) vs (a)   8 runs, 8 TIES, 0 wins.  Arm (b) has never beaten one round on any host, ever.
+(c) vs (a)   6 informative runs: 4 WINS, 2 ties. (Runs C and I excluded -- (a) at ceiling, so
+             (c) could not win.)
+(e) vs (a)   1 informative run:  1 TIE, on HALF the budget. (Run I excluded, same reason: an
+             arm that loses to a ceiling has not lost.)
 ```
 
 **The whole effect is one criterion, and the discriminator is whether it is reachable at all.** `S4`
@@ -749,6 +794,10 @@ naming the already-cited criteria and asking what was missed, which points atten
 ones. If that is the mechanism, then **a single round told to walk the criteria list explicitly**
 should recover `S4` at half the audits, and would beat (c) as well as (a). That arm does not exist
 yet. Building it is a design decision, not a measurement, so it is written down rather than done.
+
+> **BUILT 2026-09-07, RUN 2026-09-09 — and the prediction in this paragraph is REFUTED.** Arm (e)
+> cited `S1 S2 S6`, missed `S4`, and tied (a) rather than beating it, on a run where (c) scored
+> 1.000. See the 2026-09-09 entry above. The criteria list is not what arm (c) is buying.
 
 ### THE SEQUENTIAL ARM BEATS ONE ROUND, on a verified host, 3 informative runs of 3 (2026-09-07)
 
