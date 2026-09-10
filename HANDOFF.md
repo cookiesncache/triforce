@@ -695,14 +695,20 @@ to withdraw.
 
 Arm (e) — a SINGLE audit told to work through the frozen criteria one at a time — has been
 executed. It was built on 2026-09-07 and started and killed three times before this; those were
-non-executions and are not in the table. Two runs on `804660d6`: **one informative, one a refused
-ceiling.** The floor control was read before the score, as the harness enforces.
+non-executions and are not in the table. Three runs on `804660d6`: **one informative, two refused
+ceilings.** The floor control is read before the score, as the harness enforces -- but only on the
+informative run does the harness reach the block that prints it.
 
 ```
 run   date         (a)     (b)     (c)     (d)     (e)     cited by (e)   floor control
 H     2026-09-09   0.857   0.857   1.000   0.857   0.857   S1 S2 S6       CLEAN
-I     2026-09-09   1.000   1.000   1.000   1.000   0.857   --             ceiling -- refused
+I     2026-09-09   1.000   1.000   1.000   1.000   0.857   --             not reported (ceiling)
+J     2026-09-09   1.000   1.000   1.000   1.000   1.000   S1 S2 S4 S6    not reported (ceiling)
 ```
+
+The floor-control column is blank for I and J because the ceiling guard short-circuits the block
+that prints it. Those audits ran; their verdict was never rendered, and an unrendered verdict is
+not a clean one. Only run H's CLEAN is a fact.
 
 **Run H is the whole result, and arm (e) neither manufactured findings nor closed the gap.**
 
@@ -726,11 +732,20 @@ second one requires a chain.
 beat it. Reading (e)'s 0.857 against that as a loss would be reading a result off a comparison with
 no power to falsify — exactly the error run C was refused for. It is not counted.
 
-**Two of the six runs on `804660d6` are now ceilings.** That is a standing property of this host,
-not a fluke: any future n here should budget for discarding roughly one run in three.
+**The replication was attempted on 2026-09-09 and did not happen.** Run J drew a third ceiling.
+Arm (e) scored 1.000 there and did cite `S4` — which is worth one sentence and no more: on that run
+EVERY arm cited all four, so it shows the criteria walk is not permanently blind to `S4`, and it
+shows nothing whatever about (e) against (a). It is not counted.
 
-**Still deferred.** One informative run is not a replication, and "ties (a) at half the cost" is an
-efficiency claim no one should act on from n=1.
+**Three of the seven runs on `804660d6` are ceilings, and the last two in a row.** The measurement
+yield on this host is about three informative runs in five, and the run that decides it is arm (a):
+whenever one round happens to catch `S4`, the whole run is discarded. Getting arm (e) to n=2 by
+repetition therefore costs roughly two runs per usable result, and the cheaper fix is a harder
+corpus — one where arm (a) does not reach ceiling — not more attempts here.
+
+**Still deferred, at n=1.** One informative run is not a replication, and "ties (a) at half the
+cost" is an efficiency claim no one should act on from a single run. This was tried and did not
+resolve.
 
 ### It does NOT generalise: chaining wins only where the missed defect is recoverable (2026-09-07)
 
@@ -748,16 +763,17 @@ host       run  noise      (a)     (b)     (c)     (d)     (e)     what happened
 0f581cd2   G    375 ln     0.857   0.857   0.857   0.857   --      found by NO ARM
 804660d6   H    253 ln     0.857   0.857   1.000   0.857   0.857   found by (c) ONLY
 804660d6   I    253 ln     1.000   1.000   1.000   1.000   0.857   found by every arm but (e) -- CEILING, refused
+804660d6   J    253 ln     1.000   1.000   1.000   1.000   1.000   found by EVERY arm -- CEILING, refused
 ```
 
 **Tally, counting only runs where the comparison had power:**
 
 ```
-(b) vs (a)   8 runs, 8 TIES, 0 wins.  Arm (b) has never beaten one round on any host, ever.
-(c) vs (a)   6 informative runs: 4 WINS, 2 ties. (Runs C and I excluded -- (a) at ceiling, so
-             (c) could not win.)
-(e) vs (a)   1 informative run:  1 TIE, on HALF the budget. (Run I excluded, same reason: an
-             arm that loses to a ceiling has not lost.)
+(b) vs (a)   9 runs, 9 TIES, 0 wins.  Arm (b) has never beaten one round on any host, ever.
+(c) vs (a)   6 informative runs: 4 WINS, 2 ties. (Runs C, I and J excluded -- (a) at ceiling,
+             so (c) could not win.)
+(e) vs (a)   1 informative run:  1 TIE, on HALF the budget. STILL n=1: the replication attempted
+             on 2026-09-09 drew a ceiling and yielded nothing.
 ```
 
 **The whole effect is one criterion, and the discriminator is whether it is reachable at all.** `S4`
