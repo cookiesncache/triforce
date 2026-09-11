@@ -686,7 +686,7 @@ fi
 _VH=acceptance/verified-hosts.tsv
 if [ -f "$_VH" ]; then
   _vhbad=$(awk -F'\t' '/^#/ {next} NF==0 {next}
-    { if (NF != 6 || $1 !~ /^[0-9a-f]{40}$/ || ($2 != "CLEAN" && $2 != "DIRTY") || $3 !~ /^[0-9]+$/ || $3+0 < 1) print NR }' "$_VH")
+    { if ((NF != 6 && NF != 7) || $1 !~ /^[0-9a-f]{40}$/ || ($2 != "CLEAN" && $2 != "DIRTY") || $3 !~ /^[0-9]+$/ || $3+0 < 1) print NR }' "$_VH")
   if [ -z "$_vhbad" ]; then
     sok "every verified-hosts row is a full sha, a CLEAN/DIRTY verdict and a run count of at least 1"
   else
@@ -694,12 +694,29 @@ if [ -f "$_VH" ]; then
   fi
   # A CLEAN row must cite nothing and a DIRTY row must cite something. Either
   # inverse is a verdict that disagrees with its own evidence.
-  _vhinc=$(awk -F'\t' '/^#/ {next} NF==6 { if (($2=="CLEAN" && $4 != "-") || ($2=="DIRTY" && $4 == "-")) print NR }' "$_VH")
+  _vhinc=$(awk -F'\t' '/^#/ {next} NF>=6 { if (($2=="CLEAN" && $4 != "-") || ($2=="DIRTY" && $4 == "-")) print NR }' "$_VH")
   if [ -z "$_vhinc" ]; then
     sok "no verified-hosts row contradicts its own citation column"
   else
     sbad "verified-hosts.tsv has a verdict that disagrees with its citations (line $(printf '%s' "$_vhinc" | tr '\n' ' '))"
   fi
+  # A FINGERPRINT MUST LOOK LIKE ONE. The column decides whether a row is
+  # trusted, so a row carrying something that is not a hash is worse than a row
+  # carrying nothing: the empty one is refused, the malformed one is compared.
+  _vhfp=$(awk -F'\t' '/^#/ {next} NF==7 { if ($7 !~ /^[0-9a-f]{12}$/) print NR }' "$_VH")
+  if [ -z "$_vhfp" ]; then
+    sok "every fingerprinted row carries a 12-hex selection hash, not a placeholder"
+  else
+    sbad "verified-hosts.tsv has a row whose fingerprint is not a hash (line $(printf '%s' "$_vhfp" | tr '\n' ' '))"
+  fi
+  # Legacy rows are REPORTED, not failed. They certify a file selection nobody
+  # recorded and the gate refuses them; the suite's job is to say so out loud
+  # rather than to let them look verified.
+  _vhold=$(awk -F'\t' '/^#/ {next} NF==6 {print $1}' "$_VH" | cut -c1-8 | tr '\n' ' ')
+  if [ -n "$_vhold" ]; then
+    echo "  note  unfingerprinted (legacy) host rows, REFUSED by the gate until re-verified: $_vhold"
+  fi
+
   # A disqualification that names no reason is an unexplained veto, and the next
   # reader has no way to judge or retire it.
   _vhdq=$(awk -F'\t' '$1=="#!DQ" { if (NF != 3 || $2 !~ /^[0-9a-f]{40}$/ || length($3) < 20) print NR }' "$_VH")
@@ -984,6 +1001,56 @@ else
     fi
   else
     sbad "arm (e) is absent although it is the cheapest open question case 17 has"
+  fi
+
+  # ---- the verification row must fingerprint WHAT it verified -------------
+  #
+  # A row says "this host is clean". What it is clean ON depends on DJ_FILES,
+  # which is the host's non-test .py files capped at six -- and the cap does
+  # not pick the six that carry the change. Change the selection and every
+  # stale row certifies a diff that no longer exists. The row is evidence
+  # about an artifact, so it has to name the artifact.
+  if printf '%s' "$_l17" | grep -qF 'DJ_FP=$(printf' \
+     && printf '%s' "$_l17" | grep -F 'DJ_FP=$(printf' | grep -qF 'sort'; then
+    sok "the audited file selection is fingerprinted, over a SORTED list so git's order cannot move it"
+  else
+    sbad "the file selection is not fingerprinted -- a verification row cannot say what it verified"
+  fi
+
+  # The gate cannot compare a fingerprint it has not computed yet. This was a
+  # real ordering: DJ_FILES used to be derived AFTER the allowlist check.
+  _fpl=$(grep -nF 'DJ_FP=$(printf' acceptance/live-cases.sh | head -1 | cut -d: -f1)
+  _vfl=$(grep -nF '_vfp=$(printf' acceptance/live-cases.sh | head -1 | cut -d: -f1)
+  if [ -n "$_fpl" ] && [ -n "$_vfl" ] && [ "$_fpl" -lt "$_vfl" ]; then
+    sok "the selection is fingerprinted BEFORE the gate reads it, so the gate has something to compare"
+  else
+    sbad "the gate reads a fingerprint it has not computed (DJ_FP line '$_fpl', gate line '$_vfl')"
+  fi
+
+  if printf '%s' "$_l17" | grep -qF 'has a verification row with NO'; then
+    sok "a row with no fingerprint is REFUSED, not trusted -- an unverified row cannot gate a number"
+  else
+    sbad "a row written before fingerprinting still gates, certifying a selection nobody recorded"
+  fi
+
+  if printf '%s' "$_l17" | grep -qF 'was verified over a DIFFERENT'; then
+    sok "a fingerprint mismatch refuses the run rather than scoring against the wrong diff"
+  else
+    sbad "the selection can change under a stale CLEAN row with nothing noticing"
+  fi
+
+  if printf '%s' "$_l17" | grep -qF '"$HARD_BASE..$HARD_HEAD" "$DJ_FP"'; then
+    sok "--verify-host writes the fingerprint into the row it produces"
+  else
+    sbad "verification does not record the selection it certified, so the gate has nothing to check"
+  fi
+
+  # Rows accumulate. A run count that survives a selection change would publish
+  # cumulative evidence nobody gathered on the current diff.
+  if printf '%s' "$_l17" | grep -qF '_pruns=0'; then
+    sok "a run count does not carry across a selection change, so cumulative runs are not invented"
+  else
+    sbad "runs sum across different file selections -- the row would claim runs nobody performed on it"
   fi
 
   # ---- the host must supply NOISE, not just a place to put the seeds -----
@@ -1452,9 +1519,8 @@ defer "case 11 (clean-return rate, THE HEADLINE METRIC) — needs a live model. 
 defer "case 12,13 (idempotence; fix-and-re-audit rounds 1-3) — need a live model. Run acceptance/live-cases.sh --case 12 / --case 13 when authenticated."
 defer "case 15 (floor ablation) — needs a live model; the floor-free static check above is its cheap proxy, not a substitute. Run acceptance/live-cases.sh --case 15."
 defer "case 16 (effective false positives over rolling windows) — needs production audits to accumulate."
-defer "case 17's verification rows have NO FINGERPRINT of the diff they certify. A row says 'this host is clean', but what was audited depends on DJ_FILES, which is the host's non-test .py files capped at six -- and the cap does not pick the six that carry the change. Change that selection (picking the largest-diff files is the obvious improvement) and every stale CLEAN row silently certifies a diff that no longer exists. That is the same failure class as verifying a superset: a guard attached to the wrong artifact. Fix: record a hash of the sorted file list in the row, recompute it at the gate, and refuse on mismatch -- which means a row without one is not verified, so the existing rows must be re-run. Deferred because it costs a re-verification of every host and the selection has not changed yet."
-defer "case 17 arm (e), a SINGLE round told to walk the criteria list — BUILT 2026-09-07, RUN 2026-09-09 and 2026-09-10, n=2 INFORMATIVE and still deferred. FOUR runs: on 804660d6, run H informative and runs I and J refused CEILINGS (arm (a) scored 4/4, so no arm could beat it -- an arm that loses to a ceiling has not lost, and neither is counted for (e) any more than run C was counted against (c)); on 0f581cd2, run K informative. READ THE FLOOR CONTROL FIRST, and it is CLEAN on BOTH hosts: the criteria walk cited NOTHING on either unseeded host diff, so it is not a Cause A floor and INVARIANT 1 holds for it. Its scores are therefore readable, and they are the same score twice: F1=0.857, FP=0, cited S1 S2 S6, MISSED S4, and TIED arm (a) while spending HALF the audits -- on both runs arm (c) scored 1.000 and did reach S4. That REFUTES, 2 of 2, the 2026-09-07 prediction that pointing at the uncited criteria is arm (c)'s mechanism: the criteria list was in front of arm (e) the whole time and it never once reached S4. What (c) buys is seeing the previous round's ACTUAL CITATIONS, which is a different thing and is the part that needs a chain. Why this stays deferred: the NEGATIVE is settled at n=2 and licenses nothing to build, but 'ties (a) at half the budget' is an efficiency claim, and halving the product's audit budget on the strength of two ties would be a design change made on two runs. What is NOT deferred: nothing here licenses building a criteria-walk prompt into the product. Run: acceptance/live-cases.sh --case 17 --corpus django --repo <clone> --host 0f581cd29d42d1b5ed1dafb67794c2f3ce6705c9 -- prefer THAT host over 804660d6: it is 3 informative runs in 3 and has never ceilinged, where 804660d6 is 4 in 7 and drew its last two consecutively."
-defer "case 17 arm (d), the revision round — STRUCTURALLY STUCK, not merely unrun. It withdrew nothing in 3 of 4 runs on 804660d6 and 3 of 3 on 0f581cd2, and correctly said so each time. Its only mechanism is removing a false positive; a host clean enough for a readable truth set produces none (FP=0 in every arm of every run on both verified hosts), and the one corpus that did produce them — f30acb18 — has a truth set that is not readable. It needs a host that is clean AND error-provoking. Nothing so far is both, and it is not obvious such a host exists."
+defer "case 17 arm (e), a SINGLE round told to walk the criteria list — BUILT 2026-09-07, RUN 2026-09-09 and 2026-09-10, n=2 INFORMATIVE and still deferred. FOUR runs: on 804660d6, run H informative and runs I and J refused CEILINGS (arm (a) scored 4/4, so no arm could beat it -- an arm that loses to a ceiling has not lost, and neither is counted for (e) any more than run C was counted against (c)); on 0f581cd2, run K informative. READ THE FLOOR CONTROL FIRST, and it is CLEAN on BOTH hosts: the criteria walk cited NOTHING on either unseeded host diff, so it is not a Cause A floor and INVARIANT 1 holds for it. Its scores are therefore readable, and they are the same score twice: F1=0.857, FP=0, cited S1 S2 S6, MISSED S4, and TIED arm (a) while spending HALF the audits -- on both runs arm (c) scored 1.000 and did reach S4. That REFUTES, 2 of 2, the 2026-09-07 prediction that pointing at the uncited criteria is arm (c)'s mechanism: the criteria list was in front of arm (e) the whole time and it never once reached S4. What (c) buys is seeing the previous round's ACTUAL CITATIONS, which is a different thing and is the part that needs a chain. Why this stays deferred: the NEGATIVE is settled at n=2 and licenses nothing to build, but 'ties (a) at half the budget' is an efficiency claim, and halving the product's audit budget on the strength of two ties would be a design change made on two runs. What is NOT deferred: nothing here licenses building a criteria-walk prompt into the product. Run: acceptance/live-cases.sh --case 17 --corpus django --repo <clone> --host 0f581cd29d42d1b5ed1dafb67794c2f3ce6705c9 -- prefer THAT host over 804660d6 on the numbers, 3 informative runs in 4 against 4 in 7, but do not expect it to be ceiling-free: run L on 2026-09-10 was its first ceiling, one run after this entry called it ceiling-free. NOTE 804660d6 is a LEGACY row since the fingerprint landed and is REFUSED until re-verified (one --verify-host run)."
+defer "case 17 arm (d), the revision round — STRUCTURALLY STUCK, not merely unrun. It withdrew nothing in 3 of 4 runs on 804660d6 and 3 of 4 on 0f581cd2, and correctly said so each time. On the fourth 0f581cd2 run (L, 2026-09-10, a refused ceiling) it withdrew for the FIRST TIME EVER -- and withdrew S2, a TRUE POSITIVE, F1 1.000 -> 0.857. n=1 on a refused run, so it is an observation and not a result, but the revision round's first observed withdrawal was wrong. Its only mechanism is removing a false positive; a host clean enough for a readable truth set produces none (FP=0 in every arm of every run on both verified hosts), and the one corpus that did produce them — f30acb18 — has a truth set that is not readable. It needs a host that is clean AND error-provoking. Nothing so far is both, and it is not obvious such a host exists."
 
 echo
 echo "=============================================================="

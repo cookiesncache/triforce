@@ -807,6 +807,35 @@ if want 17; then
     # the permission are the same artifact.
     VHOSTS="$ROOT/acceptance/verified-hosts.tsv"
     DJ_SHA="$(cd "$CORPUS_REPO" && git rev-parse "$DJ_HOST" 2>/dev/null)"
+    # THE SELECTION IS COMPUTED BEFORE THE GATE, BECAUSE THE GATE CHECKS IT.
+    #
+    # A verification row certifies "the reviewer cites nothing on this host's
+    # own diff". WHICH diff that is depends entirely on DJ_FILES, and the cap
+    # does not pick the six files that carry the change -- it picks the first
+    # six git happens to list. Change the selection (largest-diff files is the
+    # obvious improvement) and every stale row silently certifies a diff that
+    # no longer exists: a guard attached to the wrong artifact, the same
+    # failure class as verifying a superset. So the row records a FINGERPRINT
+    # of the selection and the gate recomputes it. A row without one is not a
+    # verified row.
+    DJ_SUBJ=$(cd "$CORPUS_REPO" && git log -1 --format=%s "$DJ_HOST" 2>/dev/null)
+    # Library code only. django commits touch tests/ heavily, and a reviewer
+    # auditing test changes is noise of a different kind than the noise wanted
+    # here -- it invites findings about the tests rather than about the code.
+    DJ_FILES=$(cd "$CORPUS_REPO" && git show --name-only --format="" "$DJ_HOST" \
+               | grep '\.py$' | grep -v '^tests/' | head -6)
+    if [ -z "$DJ_SUBJ" ] || [ -z "$DJ_FILES" ]; then
+      echo
+      echo "  UNMEASURED  case 17: host $DJ_HOST has no non-test python files, or"
+      echo "  does not resolve in $CORPUS_REPO. Nothing was audited."
+      exit 2
+    fi
+    # SORTED, so git's listing order cannot move the fingerprint while the
+    # audited diff stays identical -- the diff is over a SET of files, and a
+    # guard that refuses sound rows on a reordering is a guard that gets
+    # switched off. Hashed with git, which this harness already requires;
+    # sha1sum and shasum are not both present everywhere this runs.
+    DJ_FP=$(printf '%s\n' $DJ_FILES | sort | git hash-object --stdin | cut -c1-12)
     if [ "$VERIFY_HOST" != 1 ]; then
       # A DISQUALIFICATION OUTRANKS A VERDICT, and no run can clear one.
       #
@@ -849,20 +878,39 @@ if want 17; then
         echo "  RECOMPUTE. Refusing to produce a number from this corpus."
         exit 2
       fi
+      # A ROW WITHOUT A FINGERPRINT IS NOT A VERIFIED ROW.
+      #
+      # Every row written before 2026-09-10 certifies a file selection nobody
+      # recorded. It cannot be checked against the selection this run would
+      # audit, and "it probably has not changed" is the assumption this whole
+      # mode exists to stop making. Refused, not trusted. The cost is a
+      # re-verification of every host, which is the price of the guard.
+      _vfp=$(printf '%s' "$_vrow" | cut -f7)
+      if [ -z "$_vfp" ]; then
+        echo
+        echo "  UNMEASURED  case 17: host $DJ_HOST has a verification row with NO"
+        echo "  FINGERPRINT of the file selection it certifies."
+        echo "  That row was written before the selection was recorded, so nothing"
+        echo "  proves it audited the six files this run would audit. A guard"
+        echo "  attached to an unknown artifact certifies nothing."
+        echo "  Re-run the same command with --verify-host to replace it."
+        exit 2
+      fi
+      if [ "$_vfp" != "$DJ_FP" ]; then
+        echo
+        echo "  UNMEASURED  case 17: host $DJ_HOST was verified over a DIFFERENT"
+        echo "  file selection than the one this run would audit."
+        echo "    verified: $_vfp"
+        echo "    this run: $DJ_FP"
+        echo "    files:    $(printf '%s\n' $DJ_FILES | sort | tr '\n' ' ')"
+        echo "  The CLEAN verdict on that row is about a diff this run does not"
+        echo "  audit. Scoring against it would penalise whichever arm searched"
+        echo "  hardest over files nobody checked for host-native findings."
+        echo "  Re-run with --verify-host to certify the current selection."
+        exit 2
+      fi
     fi
     HFIX="$WORK/dj"; mkdir -p "$HFIX"
-    DJ_SUBJ=$(cd "$CORPUS_REPO" && git log -1 --format=%s "$DJ_HOST" 2>/dev/null)
-    # Library code only. django commits touch tests/ heavily, and a reviewer
-    # auditing test changes is noise of a different kind than the noise wanted
-    # here -- it invites findings about the tests rather than about the code.
-    DJ_FILES=$(cd "$CORPUS_REPO" && git show --name-only --format="" "$DJ_HOST" \
-               | grep '\.py$' | grep -v '^tests/' | head -6)
-    if [ -z "$DJ_SUBJ" ] || [ -z "$DJ_FILES" ]; then
-      echo
-      echo "  UNMEASURED  case 17: host $DJ_HOST has no non-test python files, or"
-      echo "  does not resolve in $CORPUS_REPO. Nothing was audited."
-      exit 2
-    fi
     (
       cd "$HFIX" || exit 1
       git init -q -b main; git config user.email t@e.com; git config user.name t
@@ -1258,6 +1306,21 @@ JS
     _prow=$(awk -F'\t' -v s="$DJ_SHA" '$1==s {print; exit}' "$VHOSTS" 2>/dev/null)
     _pruns=$(printf '%s' "$_prow" | cut -f3); [ -n "$_pruns" ] || _pruns=0
     _pcit=$(printf '%s' "$_prow" | cut -f4); [ "$_pcit" = "-" ] && _pcit=""
+    # RUNS DO NOT SUM ACROSS A SELECTION CHANGE; CITATIONS STILL DO.
+    #
+    # A previous row's run count is evidence about the diff IT audited. If the
+    # fingerprint differs, adding it here would publish cumulative runs nobody
+    # performed on this selection -- inventing evidence by arithmetic. So it
+    # resets. Citations are treated the other way and carry forward, because
+    # DIRTY never decays and a changed cap is not a re-qualification: clearing
+    # a citation stays a human act, like clearing a #!DQ.
+    _pfp=$(printf '%s' "$_prow" | cut -f7)
+    if [ -n "$_prow" ] && [ "$_pfp" != "$DJ_FP" ]; then
+      echo "        note: the previous row fingerprint (${_pfp:-none}) is not this"
+      echo "        selection ($DJ_FP). Its $_pruns run(s) do NOT carry forward."
+      [ -n "$_pcit" ] && echo "        Its citations DO: $_pcit. DIRTY does not decay on a recap."
+      _pruns=0
+    fi
     _allcit=$(printf '%s %s' "$_pcit" "$_uniq" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ' | sed 's/ *$//')
     _verd=CLEAN; [ -n "$_allcit" ] && _verd=DIRTY
     _truns=$((_pruns + RUNS))
@@ -1266,7 +1329,10 @@ JS
       '# by --verify-host, and accumulate: runs sum, citations union, DIRTY is sticky.' \
       '# A "#!DQ" line is a HUMAN disqualification. It outranks any verdict and no' \
       '# run clears it -- verification cannot see a finding that needs the seeds.' \
-      '# sha	verdict	runs	cited	date	fixture range (throwaway repo, NOT django shas)' > "$VHOSTS"
+      '# A row also carries a FINGERPRINT of the file selection it certifies.' \
+      '# The gate recomputes it and refuses on mismatch, and refuses a row with' \
+      '# none -- what a row vouches for depends on which files were audited.' \
+      '# sha	verdict	runs	cited	date	fixture range (throwaway repo, NOT django shas)	files' > "$VHOSTS"
     # Two verifications running at once can LOSE a row -- each rewrites from
     # its own snapshot. Deliberately unlocked: the loss is fail-safe in one
     # direction only. A dropped row reads as "never verified" and aborts the
@@ -1274,8 +1340,8 @@ JS
     # writer that never saw the citation drops the whole row rather than
     # rewriting its verdict. Re-run the verification; never hand-edit a verdict.
     awk -F'\t' -v s="$DJ_SHA" '$1 != s' "$VHOSTS" > "$WORK/vh.tmp"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$DJ_SHA" "$_verd" "$_truns" "${_allcit:--}" \
-      "$(date +%Y-%m-%d)" "$HARD_BASE..$HARD_HEAD" >> "$WORK/vh.tmp"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$DJ_SHA" "$_verd" "$_truns" "${_allcit:--}" \
+      "$(date +%Y-%m-%d)" "$HARD_BASE..$HARD_HEAD" "$DJ_FP" >> "$WORK/vh.tmp"
     cp "$WORK/vh.tmp" "$VHOSTS"
     echo "        recorded $_verd over $_truns cumulative runs in acceptance/verified-hosts.tsv"
 

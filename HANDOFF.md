@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 206 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 213 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -700,6 +700,77 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### The verification row now names WHAT it verified — and run L (2026-09-10, later)
+
+The deferred item read: a CLEAN row certifies "the reviewer cites nothing on this host's own diff",
+but *which* diff that is depends on `DJ_FILES` — the host's non-test `.py` files capped at six, and
+the cap takes the first six git lists, not the six that carry the change. Change the selection and
+every stale row silently vouches for a diff that no longer exists: a guard attached to the wrong
+artifact, the same failure class as the superset verification retracted on 2026-09-07. Built today.
+
+**What changed in `live-cases.sh`.**
+
+- The selection is computed BEFORE the allowlist gate, because the gate now checks it. It used to
+  be derived after.
+- `DJ_FP` is `git hash-object` over the SORTED file list, first 12 hex. Sorted so git's listing
+  order cannot move it while the audited diff — a diff over a *set* of files — stays identical; a
+  guard that refuses sound rows on a reordering is a guard someone switches off. Hashed with git
+  because the harness already requires it; `sha1sum` and `shasum` are not both present everywhere
+  this runs.
+- `--verify-host` writes it as a seventh column.
+- The gate REFUSES a row with no fingerprint and REFUSES a row whose fingerprint disagrees with
+  the selection this run would audit. Both print what they compared.
+- Rows still accumulate, but a run count does NOT carry across a fingerprint change — summing
+  runs performed on a different selection would publish cumulative evidence nobody gathered on
+  this one. Citations DO carry: DIRTY never decays, and a changed cap is not a re-qualification.
+  Clearing a citation stays a human act, like clearing a `#!DQ`.
+
+**Every row written before today is a legacy row.** Well-formed, named by the suite, and refused by
+the gate. That was the stated price of the guard, and it was paid for the host in use:
+
+```
+host       before                   after
+0f581cd2   CLEAN, 2 runs, no fp     CLEAN 3/3, fp a086aa623481 — re-verified 2026-09-10. The two
+                                    prior runs did NOT carry forward, and the writer said so.
+804660d6   CLEAN, 3 runs, no fp     LEGACY — refused until re-verified. NOT done today; the session
+                                    stopped here on request. One command:
+                                    live-cases.sh --case 17 --corpus django --repo <clone>
+                                      --host 804660d685a5abd49fc66ba20c98d1a523f28f9f --verify-host
+5f90dc24   CLEAN, 2 runs, no fp     legacy. Never used for a measurement.
+f30acb18   DIRTY + #!DQ             legacy. Disqualified regardless.
+0d0e7f15   DIRTY (S1)               legacy. Unusable regardless.
+```
+
+**Both branches of the gate were exercised on real rows, not by inspection.** Before
+re-verification, a case-17 run on `0f581cd2` was refused with "verification row with NO
+FINGERPRINT" — the legacy branch. After re-verification the same command passed the gate and ran
+the arms — the accept branch. A gate that only ever refuses would have passed the first test and
+failed the second, and refusing everything is not a guard.
+
+**That accept-branch run is run L, and it is a CEILING.** Arm (a) caught `S4` outright — the
+first ceiling on `0f581cd2`, one run after this document called the host ceiling-free. Refused on
+the same ground as runs C, I and J: no arm could beat 4/4, so nothing is counted for (b), (c) or
+(e). The tally above is unchanged except for (b)'s eleventh tie.
+
+**One raw observation from run L is worth recording, as an observation and not a result.** Arm (d)
+— the revision round, which may withdraw an earlier finding — **withdrew something for the first
+time in eleven runs, and what it withdrew was `S2`, a true positive.** `(d) dropped from (a): [S2]
+added: []`, F1 1.000 → 0.857. Every previous run recorded (d) as "withdrew NOTHING", and the
+standing note is that its only mechanism is removing a *false* positive, which a readable host
+never produces. This is the mechanism firing in the other direction: a revision round removing a
+correct finding. n=1, on a refused run, so it licenses nothing — but the next reader of arm (d)
+should know that its first observed withdrawal was wrong.
+
+**Suite: 206 → 213.** Seven checks: the fingerprint exists and is taken over a sorted list; it is
+computed before the gate reads it; a row without one is refused; a mismatch is refused; the writer
+records it; a run count does not cross a selection change; every fingerprinted tsv row carries a
+12-hex hash. The row validator accepts 6 or 7 fields — a legacy row is stale, not corrupt, and
+calling it malformed would invite someone to "fix" it by hand-writing a fingerprint, which is the
+one thing that must never happen to that file. Legacy rows are printed by name instead.
+
+**What the fingerprint does NOT cover: the seed set.** If the seeded defects change, the truth set
+changes, and that is a different guard. This one is scoped to the deferred item as written.
+
 ### Chaining DOES generalise — the second host's "blind spot" was a sampling miss (2026-09-10)
 
 Run K, on `0f581cd2`: the noisier of the two verified-clean hosts, 375 host lines against 15 seeded.
@@ -745,9 +816,12 @@ not a mandate. Halving the product's audit budget is a design change, and two ti
 evidence to make it on. What IS settled at n=2 is the negative: the criteria walk is not the
 mechanism, and nothing here licenses building one into the product.
 
-**The cheaper-corpus recommendation was right, and it cost one run.** `0f581cd2` is now 3
-informative runs in 3 and has never ceilinged; `804660d6` is 4 in 7. Prefer `0f581cd2` for future
-case-17 runs, and note that the arm it makes hardest to study is (d), which still withdrew nothing.
+**The cheaper-corpus recommendation was right, and it cost one run.** ~~`0f581cd2` is now 3
+informative runs in 3 and has never ceilinged~~ — **that sentence lasted one run.** Run L, later the
+same day, was a ceiling on `0f581cd2`: arm (a) caught `S4` outright. The host is 3 informative in 4;
+`804660d6` is 4 in 7. Prefer `0f581cd2` still, on those numbers, but do not expect it to be
+ceiling-free — at n=4 against n=7 the two hosts may not differ in ceiling rate at all. See the
+fingerprint entry above for run L.
 
 ### The criteria walk is NOT arm (c)'s mechanism — arm (e) ran (2026-09-09) — now n=2, see 2026-09-10 above
 
@@ -832,14 +906,15 @@ host       run  noise      (a)     (b)     (c)     (d)     (e)     what happened
 804660d6   I    253 ln     1.000   1.000   1.000   1.000   0.857   found by every arm but (e) -- CEILING, refused
 804660d6   J    253 ln     1.000   1.000   1.000   1.000   1.000   found by EVERY arm -- CEILING, refused
 0f581cd2   K    375 ln     0.857   0.857   1.000   0.857   0.857   found by (c) ONLY -- on the 'blind spot' host
+0f581cd2   L    375 ln     1.000   1.000   1.000   0.857   0.857   found by (a) -- CEILING, refused. (d) WITHDREW S2, a true positive
 ```
 
 **Tally, counting only runs where the comparison had power:**
 
 ```
-(b) vs (a)   10 runs, 10 TIES, 0 wins. Arm (b) has never beaten one round on any host, ever.
-(c) vs (a)   7 informative runs: 5 WINS, 2 ties, and it has now won on BOTH hosts. (Runs C, I
-             and J excluded -- (a) at ceiling, so (c) could not win.)
+(b) vs (a)   11 runs, 11 TIES, 0 wins. Arm (b) has never beaten one round on any host, ever.
+(c) vs (a)   7 informative runs: 5 WINS, 2 ties, and it has now won on BOTH hosts. (Runs C, I,
+             J and L excluded -- (a) at ceiling, so (c) could not win.)
 (e) vs (a)   2 informative runs: 2 TIES, on HALF the budget, on two different hosts. The
              replication happened on 2026-09-10, on 0f581cd2 rather than by retrying 804660d6.
 ```
@@ -996,7 +1071,9 @@ the three django runs used a host nobody had checked, including the only run tha
 falsifier. `acceptance/verified-hosts.tsv` holds the verdicts; only a `--verify-host` run writes a
 data row, so the evidence and the permission are one artifact. A `#!DQ` line is a human
 disqualification, outranks any verdict, and no run can clear it — that is where `f30acb18` now sits,
-because the S3 problem is invisible to the machine check.
+because the S3 problem is invisible to the machine check. *(Since 2026-09-10 a row also carries a
+fingerprint of the file selection it certifies, and the gate refuses a row without one — see the
+entry at the head of this cluster.)*
 
 **Where case 17's django corpus stands: ONE USABLE HOST, AND THE QUESTION IS STILL OPEN.**
 
@@ -1432,7 +1509,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **206** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **213** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
@@ -1446,7 +1523,12 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
   is read as a defect,
   + 5 guarding case 15's ablation, including the contract patch LIFTED AND RUN against
   the real agent file, because a treatment that silently stops applying is indistinguishable
-  from a null result), offline, currently green. Keep it green.
+  from a null result,
+  + 7 guarding the fingerprint a verification row carries of the file selection it certifies:
+  that the fingerprint is taken over a SORTED list and computed BEFORE the gate reads it, that
+  a row with no fingerprint and a row whose fingerprint disagrees are both REFUSED rather than
+  trusted, that --verify-host records one, and that a run count does not carry across a
+  selection change and invent cumulative evidence), offline, currently green. Keep it green.
 
   Every check added on 2026-09-06 was probed for vacuity by breaking the thing it guards.
   A green that could not have been red is worth nothing, and this file has already
