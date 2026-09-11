@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 213 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 222 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-06.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -699,6 +699,44 @@ to withdraw.
 
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
+
+### THE HARNESS HAS NEVER RUN THE SHIPPED AUDITOR'S EFFORT — found 2026-09-10, arm (f) built and NOT run
+
+Every tier ships `effort: medium`, written in the first commit that created the agents with no
+recorded reason. Probed on 2026-09-10 with a Stop hook that writes `$CLAUDE_EFFORT` (the effort the
+turn actually ran at, per the binary):
+
+```
+claude -p --agent ganondorf-t2, effort: medium in the file      ->  ran at HIGH  (model default)
+claude -p --agent ganondorf-t2, key removed                      ->  ran at HIGH
+claude -p --agent ganondorf-t2 --effort medium                   ->  ran at medium (flag honoured)
+zelda-style Agent-tool dispatch, parent pinned --effort low     ->  subagent ran at MEDIUM (file honoured)
+```
+
+**`claude -p --agent` ignores the agent file's `effort:`; the Agent-tool dispatch production uses
+honours it.** So every `audit()` this harness has ever made — all eleven case-17 runs, case 15,
+every `--verify-host` row — measured an auditor at `high`, while the shipped plugin runs the same
+agent at `medium`. Every model the tiers use defaults to `high` on 2.1.260 (sonnet-5, opus-5,
+fable-5-1). The leaked `CLAUDE_EFFORT` from the launching session is NOT read as an input (leaked
+`low`, ran at `high`), so the prior runs were at `high` regardless of who launched them.
+
+**Decision taken by the author, 2026-09-10: the measurements at the model default are the wanted
+ones.** The fix is therefore to make production match measurement — remove `effort: medium` from
+the six agent files and the generator — NOT to pin the harness to `medium`. **That removal has not
+been made.** It is a change to the shipped plugin and is left for a session with budget.
+
+**Arm (f) is built and did not run.** It is (a) with `--effort` set to the declared value — the
+production auditor — with a runtime probe that aborts unless the flag applied and the two arms
+differ, and a K-audit floor control at the declared effort. It was launched once and killed for
+budget before any arm completed: a non-execution, in no table. **Two things to know before
+touching it:** (1) once the key is removed, arm (f) currently exits the whole case as UNMEASURED
+("declares no effort") — it must be made to SKIP, not abort, and its variables guarded under
+`set -u`, before the key comes out; (2) the `xhigh` check in `run.sh` was wrong — `xhigh` is in the
+CLI's enum — and now validates every declared value against the real one.
+
+**What this does to prior results.** Nothing in the case-17 tables is retracted: those numbers are
+correct for the auditor at `high`, and once the key is removed that IS the shipped auditor. Until
+it is removed, no live number in this file describes production.
 
 ### The verification row now names WHAT it verified — and run L (2026-09-10, later)
 
@@ -1509,7 +1547,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **213** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **222** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its

@@ -204,6 +204,15 @@ git diff -W HEAD~1..HEAD > "$WORK/diff.txt"
 # the other three cases measure.
 CRIT_FILE="$WORK/criteria.tsv"
 DIFF_FILE="$WORK/diff.txt"
+# Empty means "pass no --effort", which is what every audit before 2026-09-10
+# did. Found that day by probing the child's effective effort from a Stop
+# hook: `claude -p --agent` IGNORES the agent file's `effort:` and runs at the
+# model default (`high` for every tier model on 2.1.260), while the Agent-tool
+# dispatch zelda uses in production HONOURS it (`medium`). So the harness has
+# been measuring an auditor production does not run. Arm (f) in case 17 sets
+# this to the declared value to measure the production auditor; nothing else
+# sets it, so every other audit stays comparable with its own history.
+AUDIT_EFFORT=""
 
 # audit <out-file> <tier> [extra-instruction]
 # Runs one ganondorf and returns its GATED violations. The extra instruction is
@@ -226,8 +235,9 @@ $(cat "$CRIT_FILE")
 
 MERGED DIFF (git diff -W):
 $(cat "$DIFF_FILE")"
+  # shellcheck disable=SC2086
   raw=$(printf '%s' "$prompt" | hl_claude --plugin-dir "${AUDIT_PLUGIN_DIR:-$ROOT}" \
-          --agent "ganondorf-t$tier" --allowedTools "")
+          --agent "ganondorf-t$tier" --allowedTools "" ${AUDIT_EFFORT:+--effort "$AUDIT_EFFORT"})
   # Extraction MUST be range-oriented — see the note in clean-corpus.sh. A
   # line-oriented `sed -n 's/.*<<<VIOLATIONS//p'` captures only the remainder of
   # the marker's own line, so every multi-line violations array was discarded
@@ -1479,6 +1489,119 @@ JS
     EFLOOR=$(crits "$WORK/efloor.json" | tr '\n' ' ' | sed 's/ *$//')
   fi
 
+  # (f) THE SAME AS (a), WITH THE AUDITOR AT THE EFFORT THE SHIPPED FILE DECLARES.
+  #
+  # Every tier ships `effort: medium`, written in the first commit that created
+  # the agents with no recorded reason. On 2026-09-10 a Stop-hook probe showed
+  # that `claude -p --agent ganondorf-t2` -- the transport under every audit()
+  # in this file -- does NOT apply that key: the child runs at the model
+  # default, `high`. The same probe on a SubagentStop hook showed the Agent-tool
+  # dispatch zelda uses in production DOES apply it: the subagent ran at
+  # `medium` with its parent pinned to `low`. So every live number before this
+  # arm measured an auditor at `high` while the shipped plugin runs it at
+  # `medium`. A guard attached to the wrong artifact, under every result.
+  #
+  # Arm (a) is deliberately left as it has always run -- no flag, model default
+  # -- so this run stays comparable with the eleven before it. Arm (f) is (a)
+  # with --effort set to the declared value: the PRODUCTION auditor, measured
+  # for the first time. Same K, same prompt, same tier, same host. One variable.
+  #
+  # THE TREATMENT IS PROBED AT RUNTIME, NOT TRUSTED. A flag the transport
+  # dropped would tie the arms for a reason that says nothing about effort --
+  # the case 15 failure mode, twice over. So before an audit is spent, a
+  # throwaway copy of the plugin whose Stop hook writes $CLAUDE_EFFORT reports
+  # what each configuration actually ran at, and the arm aborts unless the flag
+  # applied AND the two differ. The probe copy is used for the two probe calls
+  # only; every scored audit loads the real plugin.
+  _declared=$(sed -n 's/^effort:[[:space:]]*//p' "$ROOT/agents/ganondorf-t2.md" | head -1 | tr -d '[:space:]')
+  if [ -z "$_declared" ]; then
+    echo
+    echo "  UNMEASURED  arm (f): agents/ganondorf-t2.md declares no effort, so there is"
+    echo "  no production value to measure against. Not reported as a tie."
+    exit 2
+  fi
+  if [ -z "$PY" ]; then
+    echo
+    echo "  UNMEASURED  arm (f): no working python interpreter, so the effort probe"
+    echo "  cannot be built and the treatment cannot be verified. Not run."
+    exit 2
+  fi
+  PROBE_DIR="$WORK/effort-probe"
+  mkdir -p "$PROBE_DIR"
+  for _d in .claude-plugin agents commands hooks skills; do
+    [ -e "$ROOT/$_d" ] && cp -r "$ROOT/$_d" "$PROBE_DIR/"
+  done
+  # The hook command runs in the child's shell, which on Windows is not this
+  # one; hand it a path both can open.
+  _wp=$(cygpath -m "$WORK" 2>/dev/null || printf '%s' "$WORK")
+  "$PY" - "$PROBE_DIR/hooks/hooks.json" "$_wp/effort-probe.txt" <<'PROBE'
+import io, json, sys
+p, out = sys.argv[1], sys.argv[2]
+h = json.load(io.open(p, encoding="utf-8"))
+# Replace the shipped prompt Stop hook: the probe copy's transcript is thrown
+# away, and a command hook is what reports the turn's effective effort.
+h["hooks"]["Stop"] = [{"matcher": "*", "hooks": [{"type": "command", "timeout": 10,
+    "command": 'echo "$CLAUDE_EFFORT" > "%s"' % out}]}]
+io.open(p, "w", encoding="utf-8").write(json.dumps(h, indent=2))
+PROBE
+  _probe() {   # [--effort X] -> the effort the child's Stop hook saw
+    : > "$WORK/effort-probe.txt"
+    printf 'Reply with exactly: READY' \
+      | hl_claude --plugin-dir "$PROBE_DIR" --agent ganondorf-t2 --allowedTools "" "$@" >/dev/null 2>&1
+    tr -d '[:space:]' < "$WORK/effort-probe.txt" 2>/dev/null
+  }
+  # The parent's own CLAUDE_EFFORT leaks into the child's environment. Measured
+  # 2026-09-10: the child does NOT read it as an input (leaked `low`, ran at
+  # `high`), and a Stop hook reports the child's own value, not the leak. A hook
+  # that fires BEFORE the turn resolves would read the leak; Stop fires after.
+  EFF_A=$(_probe)
+  EFF_F=$(_probe --effort "$_declared")
+  if [ -z "$EFF_A" ] || [ -z "$EFF_F" ]; then
+    echo
+    echo "  ABORT — the effort probe returned nothing (a='$EFF_A' f='$EFF_F'). The"
+    echo "  Stop hook did not report an effort, so neither arm's setting is known."
+    echo "  Arm (f) is NOT run: an unverified treatment is not a treatment."
+    exit 2
+  fi
+  if [ "$EFF_F" != "$_declared" ]; then
+    echo
+    echo "  ABORT — --effort $_declared did not apply: the child ran at '$EFF_F'."
+    echo "  Arm (f) would not be the production auditor. Not run."
+    exit 2
+  fi
+  if [ "$EFF_A" = "$EFF_F" ]; then
+    echo
+    echo "  ABORT — arm (a) and arm (f) would both run at '$EFF_A'. The comparison"
+    echo "  would tie for a reason that says nothing about effort. Not run, and"
+    echo "  NOT reported as a null result. (If the model default has become the"
+    echo "  declared value, this arm has nothing left to measure.)"
+    exit 2
+  fi
+  echo "        effort probe: arm (a) runs at $EFF_A (no flag: the model default, as"
+  echo "        every audit before 2026-09-10 did); arm (f) at $EFF_F (declared)."
+
+  : > "$WORK/f.txt"
+  AUDIT_EFFORT="$_declared"
+  for i in $(seq 1 $K); do audit "$WORK/f$i.json" 2; crits "$WORK/f$i.json" >> "$WORK/f.txt"; done
+  sort -u "$WORK/f.txt" > "$WORK/arm-f.txt"
+
+  # FLOOR CONTROL FOR ARM (f), at the declared effort, over the same K the arm
+  # gets. --verify-host proved this host clean at the MODEL DEFAULT, because it
+  # is the same audit() and the same transport. Nothing has ever checked the
+  # host at the effort production runs, and less thinking is as able to
+  # manufacture a citation on a clean diff as more. A citation here VOIDS (f).
+  FFLOOR_RAN=0; FFLOOR=""
+  if [ -s "$WORK/host-only-diff.txt" ]; then
+    FFLOOR_RAN=1
+    _fsaved="$DIFF_FILE"
+    DIFF_FILE="$WORK/host-only-diff.txt"
+    : > "$WORK/ffloor.txt"
+    for i in $(seq 1 $K); do audit "$WORK/ffloor$i.json" 2; crits "$WORK/ffloor$i.json" >> "$WORK/ffloor.txt"; done
+    DIFF_FILE="$_fsaved"
+    FFLOOR=$(sort -u "$WORK/ffloor.txt" | tr '\n' ' ' | sed 's/ *$//')
+  fi
+  AUDIT_EFFORT=""
+
   # Ground truth for this corpus, judged from the CODE and nothing else. Five
   # of the seven criteria are violated:
   #
@@ -1553,6 +1676,7 @@ JS
   score "$WORK/arm-d.txt" "(d) revision round, may drop"; F1D="$SCORE_F1"
   TPD="$SCORE_TP"; FPD="$SCORE_FP"
   score "$WORK/arm-e.txt" "(e) ONE round, criteria walk"; F1E="$SCORE_F1"
+  score "$WORK/arm-f.txt" "(f) K parallel, effort $EFF_F";  F1F="$SCORE_F1"
   echo "        arm (c) chains: round n+1 is told what round n cited and asked"
   echo "        for what it missed, with an explicit empty-array escape so the"
   echo "        instruction is not a finding floor. Arm (d) is a REVISION round:"
@@ -1780,6 +1904,53 @@ JS
         echo "        cited by (e): $(tr '\n' ' ' < "$WORK/arm-e.txt")"
       fi
     fi
+  fi
+
+  # ---- arm (f): the PRODUCTION auditor, at the effort the file declares ----
+  #
+  # Outside the main chain on purpose. At a ceiling (a) is 4/4 and nothing can
+  # beat it -- but (f) can still LOSE to it, and "production scores below what
+  # was measured" is readable whether or not (a) is perfect. Only (f) > (a) is
+  # unreadable at a ceiling, and that branch is the one that says so.
+  case "${F1A:-}${F1F:-}" in ""|*[!0-9.]*) F1F="" ;; esac
+  if [ -z "${F1F:-}" ]; then
+    echo "  note  arm (f) produced no numeric F1, or (a) did not. Nothing is claimed for it."
+  elif [ "$FFLOOR_RAN" != 1 ]; then
+    echo "  note  arm (f)'s floor control did NOT run: this corpus has no clean host"
+    echo "        diff. (f) F1=$F1F at effort $EFF_F is UNCONTROLLED."
+  elif [ -n "$FFLOOR" ]; then
+    bad "ARM (f) IS A FINDING FLOOR: at effort $EFF_F it cited $FFLOOR on the host's own diff, unseeded."
+    echo "        --verify-host proved this host CLEAN at effort $EFF_A -- the effort every"
+    echo "        row in verified-hosts.tsv was written at, since the verifier is the"
+    echo "        same audit() over the same transport. At the DECLARED effort, the one"
+    echo "        production runs, the auditor cites on that same clean diff. So the"
+    echo "        CLEAN rows certify an auditor production does not run. (f)'s score"
+    echo "        of $F1F is VOID, and the allowlist is unverified at $EFF_F."
+  else
+    ok "arm (f) is NOT a floor: at effort $EFF_F the auditor returned clean on the unseeded host diff"
+    if awk -v a="$F1A" -v f="$F1F" 'BEGIN{exit !(f<a)}'; then
+      bad "PRODUCTION SCORES BELOW WHAT WAS MEASURED: (f) F1=$F1F at effort $EFF_F vs (a) F1=$F1A at $EFF_A."
+      echo "        Same audits, same prompt, same tier, same host. The only difference is"
+      echo "        that (a) runs at the model default the harness has always silently"
+      echo "        used, and (f) runs at the effort the shipped file declares -- the one"
+      echo "        the Agent tool applies when zelda dispatches ganondorf. Every case-17"
+      echo "        number before this run OVERSTATES the shipped auditor by at least this"
+      echo "        much on this host. Either pin the harness to the declared effort and"
+      echo "        re-read every prior result as 'measured at $EFF_A', or ship the effort"
+      echo "        that was measured. Do not leave the two apart."
+    elif awk -v a="$F1A" -v f="$F1F" 'BEGIN{exit !(f>a)}'; then
+      echo "  note  (f) F1=$F1F at effort $EFF_F scored ABOVE (a) F1=$F1A at $EFF_A."
+      echo "        Less effort scored higher here. n=1; do not read a mechanism into it."
+    elif awk -v a="$F1A" 'BEGIN{exit !(a>=1)}'; then
+      ok "arm (f) at effort $EFF_F matched (a) at a CEILING: the production auditor found all four too"
+      echo "        Readable in one direction only: (f) could have lost here and did not."
+    else
+      ok "arm (f) at effort $EFF_F TIED (a) at $EFF_A: (f) F1=$F1F = (a) F1=$F1A"
+      echo "        On this host and this run the effort confound has no measured effect:"
+      echo "        the shipped auditor scores what the harness measured. n=1."
+    fi
+    echo "        cited by (a): $(tr '\n' ' ' < "$WORK/arm-a.txt")"
+    echo "        cited by (f): $(tr '\n' ' ' < "$WORK/arm-f.txt")"
   fi
   echo
 fi

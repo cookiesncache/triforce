@@ -72,10 +72,17 @@ if grep -q "allowed-tools" agents/*.md 2>/dev/null; then
 else
   sok "no 'allowed-tools' in agents (it is a skill/command field)"
 fi
-if grep -qE "^effort:[[:space:]]*xhigh" agents/*.md 2>/dev/null; then
-  sbad "no 'xhigh' effort in agents (enum is low|medium|high|max)"
+# This used to reject `xhigh` as "not in the enum". It IS in the enum: the
+# agent schema on 2.1.260 accepts low|medium|high|xhigh|max or an integer, and
+# every model the tiers use lists xhigh_effort as a capability. A check that
+# fires on correct input is worse than no check. This one validates whatever
+# value is written against the real enum, and can go red on a typo.
+_effbad=$(grep -HE "^effort:" agents/*.md 2>/dev/null \
+          | grep -vE ":effort:[[:space:]]*(low|medium|high|xhigh|max|[0-9]+)[[:space:]]*$")
+if [ -z "$_effbad" ]; then
+  sok "every effort value in agents is in the CLI's enum (low|medium|high|xhigh|max|<int>)"
 else
-  sok "no 'xhigh' effort in agents (enum is low|medium|high|max)"
+  sbad "an agent declares an effort the CLI will silently ignore: $(printf '%s' "$_effbad" | tr '\n' ' ')"
 fi
 
 # model pins are ALIASES, never dated ids — dated ids do not survive a release
@@ -1001,6 +1008,78 @@ else
     fi
   else
     sbad "arm (e) is absent although it is the cheapest open question case 17 has"
+  fi
+
+  # ---- arm (f): the production auditor, at the effort the file declares ---
+  #
+  # Found 2026-09-10: `claude -p --agent` ignores the agent file's `effort:`
+  # and runs at the model default, while the Agent-tool dispatch production
+  # uses honours it. Every audit() before that day measured an auditor at
+  # `high` that ships at `medium`. Arm (f) measures the shipped one. Its
+  # treatment is a flag the transport could drop, so it is probed at runtime.
+  if printf '%s' "$_l17" | grep -qF 'arm-f.txt'; then
+    sok "arm (f) exists -- (a) at the effort the shipped agent file declares"
+
+    if grep -qF '${AUDIT_EFFORT:+--effort "$AUDIT_EFFORT"}' acceptance/live-cases.sh; then
+      sok "audit() passes --effort only when an arm sets it, so every other audit keeps its history"
+    else
+      sbad "audit() has no effort override -- arm (f) cannot run the auditor at a different effort"
+    fi
+
+    if printf '%s' "$_l17" | grep -F 'f$i.json' | grep -qF 'seq 1 $K'; then
+      sok "arm (f) spends the same K audits as (a), so effort is the only variable"
+    else
+      sbad "arm (f) does not spend K audits -- a budget change would be confounded with the effort change"
+    fi
+
+    # The treatment is probed, not trusted. Two aborts: the flag did not apply,
+    # or both arms would run at the same effort. Either would tie the arms for
+    # a reason that says nothing about effort -- the case 15 failure mode.
+    if printf '%s' "$_l17" | grep -qF 'effort-probe' \
+       && printf '%s' "$_l17" | grep -qF 'did not apply: the child ran at'; then
+      sok "arm (f) probes the child's effective effort at runtime and aborts if the flag did not apply"
+    else
+      sbad "arm (f) trusts --effort without probing it -- a dropped flag would report a vacuous tie"
+    fi
+    if printf '%s' "$_l17" | grep -qF 'would both run at'; then
+      sok "arm (f) aborts when (a) and (f) would run at the same effort, instead of reporting a null result"
+    else
+      sbad "arm (f) can run when both arms share an effort and report the tie as a finding"
+    fi
+
+    if printf '%s' "$_l17" | grep -qF 'ffloor$i.json' \
+       && printf '%s' "$_l17" | grep -qF 'DIFF_FILE="$_fsaved"'; then
+      sok "arm (f) is floor-controlled on the unseeded host diff at the declared effort, and restores DIFF_FILE"
+    else
+      sbad "arm (f) has no floor control at the declared effort -- the host was only ever verified at the default"
+    fi
+    if printf '%s' "$_l17" | grep -qF 'ARM (f) IS A FINDING FLOOR'; then
+      sok "a floor verdict VOIDS arm (f)'s score rather than annotating it"
+    else
+      sbad "arm (f) can report an F1 from an effort that manufactured findings on a clean diff"
+    fi
+
+    # The init lives at the top of the file, outside case 17; what must be IN
+    # case 17 is a clear, and it must come after the last audit the arm spends.
+    _fflast=$(grep -nF 'ffloor$i.json' acceptance/live-cases.sh | tail -1 | cut -d: -f1)
+    _aclr=$(grep -nF 'AUDIT_EFFORT=""' acceptance/live-cases.sh | awk -F: -v l="${_fflast:-0}" '$1 > l {print $1; exit}')
+    if [ -n "$_fflast" ] && [ -n "$_aclr" ]; then
+      sok "AUDIT_EFFORT is cleared after arm (f)'s last audit, so no later audit silently inherits it"
+    else
+      sbad "AUDIT_EFFORT is not cleared after arm (f) -- every later audit would run at the declared effort"
+    fi
+
+    # (f) can LOSE to (a) at a ceiling, so its verdict must not sit behind the
+    # ceiling guard that hides everything else.
+    _mainclose=$(awk '/^  if \[ -z "\$F1A" \]; then/{s=1} s&&/^  fi$/{print NR; exit}' acceptance/live-cases.sh)
+    _fverd=$(grep -nF 'PRODUCTION SCORES BELOW' acceptance/live-cases.sh | head -1 | cut -d: -f1)
+    if [ -n "$_mainclose" ] && [ -n "$_fverd" ] && [ "$_fverd" -gt "$_mainclose" ]; then
+      sok "arm (f)'s verdict is outside the ceiling short-circuit: production losing to a perfect (a) is still readable"
+    else
+      sbad "arm (f)'s verdict is inside the ceiling guard -- a ceiling run would hide production scoring below it"
+    fi
+  else
+    sbad "arm (f) is absent -- the shipped auditor's effort has never been measured"
   fi
 
   # ---- the verification row must fingerprint WHAT it verified -------------
