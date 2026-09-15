@@ -6,7 +6,6 @@ description: >-
   for the verify() mode of "seeing the orchestrator's changes"; never invoked directly by a user,
   and never used to review a diff.
 model: sonnet
-effort: medium
 maxTurns: 3
 tools: []
 color: cyan

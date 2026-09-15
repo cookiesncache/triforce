@@ -49,7 +49,6 @@ emit_one() {
     printf '  preflight risk score: tier %s covers a %s-LOC envelope with %s citation ring.\n' \
            "${tier#t}" "$loc" "$ring_label"
     printf 'model: %s\n' "$model"
-    printf 'effort: medium\n'
     printf 'maxTurns: 8\n'
     printf 'tools: []\n'
     printf 'color: red\n'

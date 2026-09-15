@@ -72,17 +72,21 @@ if grep -q "allowed-tools" agents/*.md 2>/dev/null; then
 else
   sok "no 'allowed-tools' in agents (it is a skill/command field)"
 fi
-# This used to reject `xhigh` as "not in the enum". It IS in the enum: the
-# agent schema on 2.1.260 accepts low|medium|high|xhigh|max or an integer, and
-# every model the tiers use lists xhigh_effort as a capability. A check that
-# fires on correct input is worse than no check. This one validates whatever
-# value is written against the real enum, and can go red on a typo.
-_effbad=$(grep -HE "^effort:" agents/*.md 2>/dev/null \
-          | grep -vE ":effort:[[:space:]]*(low|medium|high|xhigh|max|[0-9]+)[[:space:]]*$")
-if [ -z "$_effbad" ]; then
-  sok "every effort value in agents is in the CLI's enum (low|medium|high|xhigh|max|<int>)"
+# EFFORT IS NOT PINNED, BECAUSE THE MEASUREMENT WAS NOT. Every live number in
+# HANDOFF was produced by `claude -p --agent`, which ignores the agent file's
+# `effort:` and runs at the model default (probed 2026-09-10). The Agent-tool
+# dispatch production uses DOES honour the key. Until 2026-09-14 every tier
+# shipped `effort: medium`, so production ran an auditor no measurement had
+# ever seen. The key came out; this check keeps it out. Pinning one again is
+# allowed, but only through case 17 arm (f), which measures the declared
+# value against the default -- and then this check is changed on purpose.
+# (An earlier check here validated the value against the CLI's enum. With no
+# value to validate it would be green on empty input forever, so it went.)
+_effpin=$(grep -lE "^effort:" agents/*.md 2>/dev/null | tr '\n' ' ')
+if [ -z "$_effpin" ]; then
+  sok "no agent pins an effort: production runs at the model default, the effort every live number was measured at"
 else
-  sbad "an agent declares an effort the CLI will silently ignore: $(printf '%s' "$_effbad" | tr '\n' ' ')"
+  sbad "an agent pins an effort no measurement has run at: $_effpin-- measure it with case 17 arm (f) or drop the key"
 fi
 
 # model pins are ALIASES, never dated ids — dated ids do not survive a release
@@ -1077,6 +1081,24 @@ else
       sok "arm (f)'s verdict is outside the ceiling short-circuit: production losing to a perfect (a) is still readable"
     else
       sbad "arm (f)'s verdict is inside the ceiling guard -- a ceiling run would hide production scoring below it"
+    fi
+
+    # NO KEY, NO GAP. With no agent pinning an effort, (a) already IS the
+    # production auditor. The first version of this arm exited the whole case
+    # on that state, which would have made removing the key -- the fix -- cost
+    # every other arm. So (f) SKIPS: the no-effort branch may not exit, and a
+    # skipped arm may not be scored, because comm(1) over a missing file
+    # prints a fabricated F1 of 0.000 and calls it a result.
+    _fskip=$(awk '/^  if \[ -z "\$_declared" \]; then/{b=1;next} b&&/^  else$/{exit} b&&/exit/{print NR}' acceptance/live-cases.sh)
+    if printf '%s' "$_l17" | grep -qF 'declares no effort' && [ -z "$_fskip" ]; then
+      sok "arm (f) SKIPS when no effort is declared, so dropping the key does not abort the other five arms"
+    else
+      sbad "arm (f) exits the whole case when no effort is declared -- removing the key would cost every arm (line $_fskip)"
+    fi
+    if grep -B1 -F 'score "$WORK/arm-f.txt"' acceptance/live-cases.sh | head -1 | grep -qF '"$ARMF" = 1'; then
+      sok "a skipped arm (f) is not scored: comm over a missing file would print a fabricated F1 of 0.000"
+    else
+      sbad "arm (f) is scored unconditionally -- a skipped arm would score 0.000 against a file that does not exist"
     fi
   else
     sbad "arm (f) is absent -- the shipped auditor's effort has never been measured"

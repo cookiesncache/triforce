@@ -119,8 +119,8 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 222 checks green, 5/5 suites, exit 0.
-                                         #   Verified at the committed tip, 2026-09-06.
+bash acceptance/run.sh                    # DONE — 224 checks green, 5/5 suites, exit 0.
+                                         #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
 bash acceptance/probe-harness.sh          # 6/6 + 1 UNMEASURED, PROBE_EXIT=0 (2026-09-06)
@@ -700,10 +700,10 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
-### THE HARNESS HAS NEVER RUN THE SHIPPED AUDITOR'S EFFORT — found 2026-09-10, arm (f) built and NOT run
+### THE HARNESS HAS NEVER RUN THE SHIPPED AUDITOR'S EFFORT — found 2026-09-10, arm (f) built and NOT run; RESOLVED 2026-09-14 by removing the key
 
-Every tier ships `effort: medium`, written in the first commit that created the agents with no
-recorded reason. Probed on 2026-09-10 with a Stop hook that writes `$CLAUDE_EFFORT` (the effort the
+Every tier shipped `effort: medium` until 2026-09-14, written in the first commit that created the
+agents with no recorded reason. Probed on 2026-09-10 with a Stop hook that writes `$CLAUDE_EFFORT` (the effort the
 turn actually ran at, per the binary):
 
 ```
@@ -722,21 +722,31 @@ fable-5-1). The leaked `CLAUDE_EFFORT` from the launching session is NOT read as
 
 **Decision taken by the author, 2026-09-10: the measurements at the model default are the wanted
 ones.** The fix is therefore to make production match measurement — remove `effort: medium` from
-the six agent files and the generator — NOT to pin the harness to `medium`. **That removal has not
-been made.** It is a change to the shipped plugin and is left for a session with budget.
+the agent files and the generator — NOT to pin the harness to `medium`. **Made 2026-09-14.** The
+key is gone from the five agent files that carried it (zelda never had one) and from
+`gen-ganondorf.sh`; `--check` is in sync. `run.sh` now goes red if any agent pins an effort,
+because a pinned value is one no measurement has run at. Pinning again is allowed, but only
+through arm (f), which measures the declared value against the default — and then that check is
+changed on purpose, not worked around.
 
-**Arm (f) is built and did not run.** It is (a) with `--effort` set to the declared value — the
+**Arm (f) is built and has never run.** It is (a) with `--effort` set to the declared value — the
 production auditor — with a runtime probe that aborts unless the flag applied and the two arms
 differ, and a K-audit floor control at the declared effort. It was launched once and killed for
-budget before any arm completed: a non-execution, in no table. **Two things to know before
-touching it:** (1) once the key is removed, arm (f) currently exits the whole case as UNMEASURED
-("declares no effort") — it must be made to SKIP, not abort, and its variables guarded under
-`set -u`, before the key comes out; (2) the `xhigh` check in `run.sh` was wrong — `xhigh` is in the
-CLI's enum — and now validates every declared value against the real one.
+budget before any arm completed: a non-execution, in no table. Now that no agent declares an
+effort it has nothing to execute, and it says so: **as of 2026-09-14 it SKIPS** — the other five
+arms run, nothing is scored for (f) (a skipped arm is never scored; `comm` over a missing file
+would print 0.000 and call it a result), and the verdict reads "did not run", not "tied". The
+first version exited the whole case on that state, which would have made removing the key cost
+every other arm. Two suite checks hold the skip. It stays built as the instrument for the day
+someone re-pins an effort. Also on 2026-09-10 the `xhigh` check in `run.sh` was found wrong —
+`xhigh` is in the CLI's enum — and replaced by an enum validator; that validator is now itself
+gone, because with no value to validate it would be green on empty input forever, and its place
+is taken by the no-pin check above.
 
 **What this does to prior results.** Nothing in the case-17 tables is retracted: those numbers are
-correct for the auditor at `high`, and once the key is removed that IS the shipped auditor. Until
-it is removed, no live number in this file describes production.
+correct for the auditor at `high`, and with the key removed that IS the shipped auditor. Since
+2026-09-14 every live number in this file describes production. Between 2026-09-10 and then, none
+did.
 
 ### The verification row now names WHAT it verified — and run L (2026-09-10, later)
 
@@ -1547,7 +1557,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **222** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **224** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
@@ -1566,7 +1576,13 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
   that the fingerprint is taken over a SORTED list and computed BEFORE the gate reads it, that
   a row with no fingerprint and a row whose fingerprint disagrees are both REFUSED rather than
   trusted, that --verify-host records one, and that a run count does not carry across a
-  selection change and invent cumulative evidence), offline, currently green. Keep it green.
+  selection change and invent cumulative evidence,
+  + 11 guarding case 17 arm (f): its runtime probe of the child's effective effort, its floor
+  control at the declared effort, its verdict placed outside the ceiling guard, and that it
+  SKIPS rather than aborts the case when no effort is declared — with a skipped arm never
+  scored, because comm over a missing file prints 0.000 and calls it a result,
+  + 1 that no agent pins an effort, because a pinned effort is one no measurement has run
+  at), offline, currently green. Keep it green.
 
   Every check added on 2026-09-06 was probed for vacuity by breaking the thing it guards.
   A green that could not have been red is worth nothing, and this file has already

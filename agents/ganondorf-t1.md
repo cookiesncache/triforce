@@ -6,7 +6,6 @@ description: >-
   and never invoked directly by a user or proactively by the main thread. Selected by the
   preflight risk score: tier 1 covers a 400-LOC envelope with an enclosing-function citation ring.
 model: sonnet
-effort: medium
 maxTurns: 8
 tools: []
 color: red

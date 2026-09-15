@@ -6,7 +6,6 @@ description: >-
   and never invoked directly by a user or proactively by the main thread. Selected by the
   preflight risk score: tier 3 covers a 800-LOC envelope with a touched-file citation ring.
 model: fable
-effort: medium
 maxTurns: 8
 tools: []
 color: red

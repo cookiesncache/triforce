@@ -6,7 +6,6 @@ description: >-
   never touches the main checkout. Dispatched by zelda, not invoked directly by a user.
 model: sonnet
 isolation: worktree
-effort: medium
 color: green
 tools: ["Read", "Grep", "Glob", "Bash", "Write", "Edit", "TodoWrite"]
 ---

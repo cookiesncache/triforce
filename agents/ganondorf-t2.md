@@ -6,7 +6,6 @@ description: >-
   and never invoked directly by a user or proactively by the main thread. Selected by the
   preflight risk score: tier 2 covers a 600-LOC envelope with an enclosing-function citation ring.
 model: opus
-effort: medium
 maxTurns: 8
 tools: []
 color: red
