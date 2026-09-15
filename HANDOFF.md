@@ -1801,6 +1801,23 @@ case 17 result recorded before that date is void.
 
 ## Decisions that are settled — do not re-litigate
 
+### Author decisions, taken 2026-09-15
+
+These were put to the author one at a time, with the numbers, and decided. Each is closed unless
+the author reopens it; a cold session must not reopen one because the numbers look tempting.
+
+**1. The case 17 corpus is NOT hardened. Case 17 is closed on this corpus at 13 runs.**
+Decided against hardening with the tripwire firing (5 ceilings in the last 6) and the marginal seed
+measured at about one half per round. The reasoning the decision was taken on: the one-round
+premise is already answered as far as any corpus can answer it — the issue's literal clause holds
+(a forced INDEPENDENT round never won, 13 of 13) and a CHAINED round beats one round (5 wins, 2
+ties, 7 informative, both hosts); (d) is stuck on the host, not the corpus; and the only question a
+harder corpus would serve is (e)'s efficiency claim, on which nothing downstream depends. The
+tallies stand as the measurement of record. No further case 17 runs are bought on this corpus. The
+tripwire stays armed and keeps warning; that is a reminder, not a blocker. If a run is ever bought
+again for a specific reason, it is bought on this corpus knowing the odds, or on a new one knowing
+the tallies restart.
+
 ### Two deviations from the issue's literal text, both deliberate
 
 **1. `context: inline` + `agent: zelda`, not `context: fork`.**
