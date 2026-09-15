@@ -780,14 +780,19 @@ the gate. That was the stated price of the guard, and it was paid for the host i
 host       before                   after
 0f581cd2   CLEAN, 2 runs, no fp     CLEAN 3/3, fp a086aa623481 — re-verified 2026-09-10. The two
                                     prior runs did NOT carry forward, and the writer said so.
-804660d6   CLEAN, 3 runs, no fp     LEGACY — refused until re-verified. NOT done today; the session
-                                    stopped here on request. One command:
-                                    live-cases.sh --case 17 --corpus django --repo <clone>
-                                      --host 804660d685a5abd49fc66ba20c98d1a523f28f9f --verify-host
+804660d6   CLEAN, 3 runs, no fp     CLEAN 3/3, fp 39304b2992f1 — re-verified 2026-09-14, four days
+                                    after the guard landed. Its three pre-fingerprint runs did NOT
+                                    carry forward either; the count is 3 because this run bought 3.
 5f90dc24   CLEAN, 2 runs, no fp     legacy. Never used for a measurement.
 f30acb18   DIRTY + #!DQ             legacy. Disqualified regardless.
 0d0e7f15   DIRTY (S1)               legacy. Unusable regardless.
 ```
+
+**Both fingerprinted hosts are usable again, and neither inherited a run.** `0f581cd2` was
+re-verified on 2026-09-10 and `804660d6` on 2026-09-14; each row reads 3 runs because each
+re-verification bought 3, not because anything carried over. The remaining three rows are still
+legacy and still refused, and two of them are disqualified or unusable regardless. The suite
+prints the legacy list by name on every run — read it rather than the count.
 
 **Both branches of the gate were exercised on real rows, not by inspection.** Before
 re-verification, a case-17 run on `0f581cd2` was refused with "verification row with NO
