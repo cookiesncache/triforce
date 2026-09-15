@@ -142,20 +142,20 @@ bash acceptance/live-cases.sh --case 15   # PASSED — 2026-09-06, n=4, on a REA
                                          #   pre-gate == post-gate every time, so THE GATE DOES
                                          #   NOT REMOVE THEM. Cause A confirmed. The earlier
                                          #   "inconclusive" was an untreated arm; see below.
-bash acceptance/live-cases.sh --case 17   # SPLIT VERDICT — 2026-09-10, 11 runs on 2 hosts
+bash acceptance/live-cases.sh --case 17   # SPLIT VERDICT — 2026-09-14, 12 runs on 2 hosts
                                          #   verified CLEAN on the exact diff they audit.
                                          #   The issue's LITERAL clause HOLDS: arm (b), a forced
                                          #   INDEPENDENT round, has never beaten one round --
-                                         #   11 runs, 11 ties, 0 wins, on any host, ever.
+                                         #   12 runs, 12 ties, 0 wins, on any host, ever.
                                          #   Arm (c), a CHAINED round at the SAME budget as (a),
                                          #   beats it on BOTH hosts: 5 wins, 2 ties over 7
-                                         #   informative runs (4 ceilings correctly refused).
+                                         #   informative runs (5 ceilings correctly refused).
                                          #   Arm (e) ties (a) at HALF the budget, n=2.
                                          #   Arm (f) SKIPS: no agent declares an effort, so (a)
                                          #   already is the production auditor.
-                                         #   Prefer --host 0f581cd2... on the numbers (3
-                                         #   informative in 4 vs 4 in 7), NOT because it is
-                                         #   ceiling-free -- run L was its first ceiling.
+                                         #   Prefer --host 0f581cd2... for its cheaper diff,
+                                         #   NOT its ceiling rate: 3 informative in 5 against
+                                         #   4 in 7 is not a difference at these n.
                                          #   The 2026-09-06 text here -- "(c) is INCONSISTENT",
                                          #   "first false positives ever measured" -- is
                                          #   SUPERSEDED: that n=3 predated --verify-host, and
@@ -704,6 +704,36 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### Run M: the first run with no effort declared, and arm (f) skipped as designed (2026-09-14)
+
+The first case-17 run since `effort: medium` came out of the agent files. **A CEILING, refused** —
+arm (a) caught all four including `S4`, so no arm could beat it and nothing is counted for (b), (c)
+or (e) beyond (b)'s twelfth tie. `0f581cd2` is now **3 informative in 5**, `804660d6` 4 in 7; at
+those n the two hosts may not differ in ceiling rate at all, and the recommendation to prefer
+`0f581cd2` now rests on almost nothing. Prefer it for its cheaper diff, not for its ceiling rate.
+
+**What this run was actually for.** Arm (f) had been built, killed once for budget, and never
+executed. Its skip branch had been checked structurally — two suite checks, both probed red by
+breaking what they guard — but a static check on a shell script is not the script running. It ran:
+
+```
+SKIP  arm (f): agents/ganondorf-t2.md declares no effort, so production runs
+      at the model default -- the effort every audit in this run uses.
+      Nothing to compare; nothing scored for (f).
+(f) K parallel, declared effort    SKIPPED: no effort declared; (a) is the production auditor
+note  arm (f) did not run: ... Nothing was run, so nothing passed.
+```
+
+The other five arms ran and scored normally, which is the whole point of the change: the first
+version of arm (f) would have exited the entire case on this state, so **removing the key — the
+fix — would have cost every other arm.** The skipped arm is not scored, and the verdict says "did
+not run" rather than reporting a tie. INVARIANT 10 holds through the one path built to test it.
+
+**And the numbers in this file now describe production.** Every audit in this run used the model
+default, and so does the Agent-tool dispatch zelda makes, because no agent file declares an effort
+for it to honour. The gap found on 2026-09-10 is closed — not by re-measuring eleven runs, but by
+shipping what was measured.
+
 ### THE HARNESS HAS NEVER RUN THE SHIPPED AUDITOR'S EFFORT — found 2026-09-10, arm (f) built and NOT run; RESOLVED 2026-09-14 by removing the key
 
 Every tier shipped `effort: medium` until 2026-09-14, written in the first commit that created the
@@ -875,7 +905,8 @@ mechanism, and nothing here licenses building one into the product.
 
 **The cheaper-corpus recommendation was right, and it cost one run.** ~~`0f581cd2` is now 3
 informative runs in 3 and has never ceilinged~~ — **that sentence lasted one run.** Run L, later the
-same day, was a ceiling on `0f581cd2`: arm (a) caught `S4` outright. The host is 3 informative in 4;
+same day, was a ceiling on `0f581cd2`: arm (a) caught `S4` outright. Run M on 2026-09-14 was a
+second one, so the host is 3 informative in 5;
 `804660d6` is 4 in 7. Prefer `0f581cd2` still, on those numbers, but do not expect it to be
 ceiling-free — at n=4 against n=7 the two hosts may not differ in ceiling rate at all. See the
 fingerprint entry above for run L.
@@ -964,14 +995,17 @@ host       run  noise      (a)     (b)     (c)     (d)     (e)     what happened
 804660d6   J    253 ln     1.000   1.000   1.000   1.000   1.000   found by EVERY arm -- CEILING, refused
 0f581cd2   K    375 ln     0.857   0.857   1.000   0.857   0.857   found by (c) ONLY -- on the 'blind spot' host
 0f581cd2   L    375 ln     1.000   1.000   1.000   0.857   0.857   found by (a) -- CEILING, refused. (d) WITHDREW S2, a true positive
+0f581cd2   M    375 ln     1.000   1.000   1.000   1.000   1.000   found by EVERY arm -- CEILING, refused. (f) SKIPPED: no effort declared
 ```
 
 **Tally, counting only runs where the comparison had power:**
 
 ```
-(b) vs (a)   11 runs, 11 TIES, 0 wins. Arm (b) has never beaten one round on any host, ever.
+(b) vs (a)   12 runs, 12 TIES, 0 wins. Arm (b) has never beaten one round on any host, ever.
 (c) vs (a)   7 informative runs: 5 WINS, 2 ties, and it has now won on BOTH hosts. (Runs C, I,
-             J and L excluded -- (a) at ceiling, so (c) could not win.)
+             J, L and M excluded -- (a) at ceiling, so (c) could not win.)
+(f) vs (a)   NOT APPLICABLE since 2026-09-14: no agent declares an effort, so (a) IS the
+             production auditor and the arm SKIPS. It stays built for the day one is pinned.
 (e) vs (a)   2 informative runs: 2 TIES, on HALF the budget, on two different hosts. The
              replication happened on 2026-09-10, on 0f581cd2 rather than by retrying 804660d6.
 ```
