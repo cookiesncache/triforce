@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 235 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 236 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -596,6 +596,34 @@ context shows the guard as unchanged in round 2, where round 1 showed it deleted
 `s1.json`, `s2.json`, their `.raw.json` pre-gate arrays, both blocking lists, `diff.txt` as
 audited, and `models.txt`. Small text, committed, so the character above can be checked by a
 reader rather than taken from this file.
+
+### Case 13, trial 2 — drift=0, and the evidence was LOST by the harness (2026-09-15)
+
+```
+case 13 — fix-and-re-audit (rounds 1..3)
+  ok    round 2 cites no criterion that was not blocking in round 1 (drift=0)
+  ok    verifier emitted a closed-enum status and nothing outside it
+  2 passed, 0 failed
+  kept  9 file(s) -> acceptance/evidence/case13/2026-09-15-trial2
+```
+
+**The result stands: drift=0, 2 of 2.** Both rounds ran on a non-empty diff (the harness aborts
+otherwise), the verifier stayed inside its enum, and the protocol above counts it.
+
+**The evidence does not exist.** The `kept 9 file(s)` line was true when printed and false one
+command later. `--keep` was passed relative, case 13 `cd`s into its fixture, so the trap resolved
+the path INSIDE `$WORK` — and `rm -rf "$WORK"` followed. The same defect the `--repo` comment in
+the harness describes, made again with the next flag. So trial 2 has the same standing as trial 1:
+a real drift=0 whose two blocking sets nobody can read back. The `models.txt` for it is gone too.
+
+**Fixed, and guarded twice.** `--keep` is now absolutised as it is parsed, and `keep_work` refuses
+a relative path outright with `$WORK` left standing rather than report a copy into a directory
+about to be deleted. Two checks in `run.sh` reproduce the loss — a relative `--keep` from another
+cwd, and the lifted trap after a `cd` — and each goes red on the exact mutation that caused it.
+
+**Trial 3 follows, under the same protocol.** It is not a re-roll: trial 2 is counted and was a
+pass. It is bought because the protocol's retention clause was not met, and it is counted whatever
+it says.
 
 ### Case 13 passes — but its first pass that day was vacuous, and that matters
 
@@ -1794,7 +1822,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **235** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **236** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its

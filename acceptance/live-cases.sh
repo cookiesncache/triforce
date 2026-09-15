@@ -84,7 +84,16 @@ while [ $# -gt 0 ]; do
     --host) DJ_HOST="$2"; shift 2 ;;
     --verify-host) VERIFY_HOST=1; shift ;;
     --runs) RUNS="$2"; shift 2 ;;
-    --keep) KEEP="$2"; shift 2 ;;
+    # ABSOLUTISED IMMEDIATELY, for the same reason as --repo and found the same
+    # way: case 13 cds into its fixture, so a relative --keep resolved INSIDE
+    # $WORK at trap time. The trap reported "kept 9 file(s)" and the next
+    # command removed them. The first kept run of case 13 (2026-09-15) has no
+    # evidence because of this.
+    --keep)
+      if [ -e "$2" ] && [ ! -d "$2" ]; then KEEP="$2"   # the guard below refuses it by name
+      else mkdir -p "$2" 2>/dev/null; KEEP="$(cd "$2" 2>/dev/null && pwd)"; fi
+      [ -n "${KEEP:-}" ] || { echo "live-cases: --keep '$2' cannot be created or entered." >&2; exit 2; }
+      shift 2 ;;
     *) echo "live-cases: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -129,6 +138,13 @@ WORK="$(mktemp -d)"
 # recovered by hand, and the status the script was exiting with stands.
 keep_work() {
   [ -n "$KEEP" ] || return 0
+  # A relative KEEP here means the parser's absolutisation was lost: the case
+  # bodies cd, so it would resolve into $WORK and be deleted a moment later
+  # while this function reports success. Refuse, and leave $WORK standing.
+  case "$KEEP" in
+    /*|[A-Za-z]:*) ;;
+    *) echo "  KEEP FAILED: '$KEEP' is relative and the cwd has moved. \$WORK is left in place." >&2; return 1 ;;
+  esac
   if mkdir -p "$KEEP" && find "$WORK" -maxdepth 1 -type f -exec cp {} "$KEEP"/ \; ; then
     echo "  kept  $(find "$KEEP" -maxdepth 1 -type f | wc -l | tr -d ' ') file(s) -> $KEEP"
     return 0

@@ -1375,15 +1375,21 @@ else
   # script's own exit status; a failed copy is reported and leaves $WORK in
   # place rather than deleting the only copy.
   _kd="$(mktemp -d)"; mkdir -p "$_kd/full" "$_kd/empty" "$_kd/out"; echo x > "$_kd/full/old.json"; echo f > "$_kd/afile"
-  _kf="$(bash acceptance/live-cases.sh --keep "$_kd/full"  --case 13 2>&1)"; _kfrc=$?
+  # RELATIVE, on purpose. The first kept run of case 13 (2026-09-15) passed a
+  # relative --keep; case 13 cds into its fixture, so the trap resolved it
+  # inside $WORK, reported "kept 9 file(s)", and the next command deleted them.
+  # The refusal prints $KEEP as parsed, so a relative argument must come back
+  # absolute here -- that is the parser's absolutisation, observed directly.
+  _kf="$(cd "$_kd" && bash "$OLDPWD/acceptance/live-cases.sh" --keep full --case 13 2>&1)"; _kfrc=$?
   _ka="$(bash acceptance/live-cases.sh --keep "$_kd/afile" --case 13 2>&1)"; _karc=$?
   _ke="$(bash acceptance/live-cases.sh --keep "$_kd/empty" --verify-host --corpus hard --runs 3 2>&1)"
   if [ "$_kfrc" = 2 ] && printf '%s' "$_kf" | grep -qF 'is not empty' \
+     && printf '%s' "$_kf" | grep -qE "^live-cases: --keep '(/|[A-Za-z]:)[^']*/full' is not empty" \
      && [ "$_karc" = 2 ] && printf '%s' "$_ka" | grep -qF 'is not a directory' \
      && ! printf '%s%s%s' "$_kf" "$_ka" "$_ke" | grep -qF 'triforce live cases'; then
-    sok "--keep refuses a non-empty target and a file, at a guard, before the auth probe"
+    sok "--keep refuses a non-empty target and a file at a guard, before the auth probe, and a relative target is absolutised as it is parsed"
   else
-    sbad "--keep accepts a target that would merge two runs' evidence, or the refusal reaches the model"
+    sbad "--keep accepts a target that would merge two runs' evidence, leaves a relative target to resolve inside \$WORK, or the refusal reaches the model"
   fi
 
   # The trap itself, lifted rather than restated. Driven through a real EXIT
@@ -1420,6 +1426,17 @@ else
       sbad "a failed --keep copy went unreported, deleted the only copy, or altered the exit status (rc=$_kbrc)"
     fi
     rm -rf "$_kw3"
+    # And the trap's own guard: a relative KEEP reaching keep_work after the
+    # cwd has moved is refused with WORK left standing, never "kept" into a
+    # directory that is about to be removed.
+    _krel="$(cd "$_kd" && bash "$_kdrv" "$_kd/fn.sh" "relkeep" "$_kd/w4" 2>&1)"; _krrc=$?
+    _kw4="$(cat "$_kd/w4" 2>/dev/null)"
+    if [ "$_krrc" = 7 ] && printf '%s' "$_krel" | grep -qF 'is relative' && [ -d "$_kw4" ] && [ ! -e "$_kd/relkeep" ]; then
+      sok "keep_work refuses a relative KEEP outright and leaves WORK in place, so evidence cannot be kept into a directory about to be deleted"
+    else
+      sbad "keep_work accepted a relative KEEP after a cd -- that is how the first kept run's evidence was lost (rc=$_krrc)"
+    fi
+    rm -rf "$_kw4"
   else
     sbad "could not lift keep_work from live-cases.sh (its markers moved)"
   fi
