@@ -1849,6 +1849,16 @@ premise stands as specified. Chaining is recorded as a lead for a future corpus,
 build on. The tally lines elsewhere in this file now say 5 wins, 1 loss, 2 ties over 8 runs with
 power in at least one direction.
 
+**3. navi stays CUT and the plan gate stays DEFERRED — by decision, not by default.** Both A/Bs
+were put to the author with their costs (navi: a task corpus with correctness ground truth and a
+full zelda+link+ganondorf run per task per arm; the plan gate: a plan corpus with a seeded
+difficulty ladder and four arms) and with the one new piece of evidence — arm (d) at the audit gate
+IS a delete-only refuter, the plan gate's candidate configuration (iv), and it withdrew nothing in
+6 of 7 runs and a true positive the once it acted. The author's call: **"defer. let's settle on
+production with 3 agents first."** Neither seat is waived and neither A/B is funded; both wait on
+production experience with the three-agent roster. A cold session must not build either, and must
+not read "deferred" as "forgotten" — it was decided on 2026-09-15 with the numbers in front of it.
+
 ### Two deviations from the issue's literal text, both deliberate
 
 **1. `context: inline` + `agent: zelda`, not `context: fork`.**
