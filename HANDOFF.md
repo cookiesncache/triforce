@@ -128,11 +128,11 @@ bash acceptance/probe-harness.sh          # 6/6 + 1 UNMEASURED, PROBE_EXIT=0 (20
                                          #   fixture was fixed. It is NON-DETERMINISTIC:
                                          #   two runs the same day, one PASS one FAIL.
                                          #   Read its section before quoting either.
-bash acceptance/live-cases.sh --case 12   # FAILS, and now CHARACTERISED — 2026-09-06. The
-                                         #   leak is a RELABEL, not a new citation: 1 relabel,
-                                         #   0 new. Bounded population, unstable labels. Still a
-                                         #   FAIL, but a different and smaller one than "the
-                                         #   schema is leaking". Section below.
+bash acceptance/live-cases.sh --case 12   # FAIL, FAIL, PASS (09-03, 09-06, 09-15). The leak is a
+                                         #   RELABEL of S4 on a span already cited, and S4 is a
+                                         #   coin: cited in 4 of 7 rounds on this diff. Bounded
+                                         #   population, unstable labels. Two FAILs stand; a PASS
+                                         #   on this fixture is the expected draw. Sections below.
 bash acceptance/live-cases.sh --case 13   # PASSED — drift=0 on 3 of 3 trials (2026-09-03, -15, -15).
                                          #   The first 09-03 pass was VACUOUS (empty round-2 diff);
                                          #   fixture fixed. Trial 3 is the only one whose sets
@@ -521,6 +521,56 @@ further defects surfaced underneath them.
 All four are locked in by seven offline checks in `run.sh`, two of which **lift the real helpers
 out of `live-cases.sh` and run them** rather than grepping for their presence — a filter that
 exists but does not filter is the same false green as no filter at all.
+
+### Case 12, trial 3 — the first PASS, and the marginal seed is now a number (2026-09-15)
+
+```
+case 12 — idempotence
+  ok    re-running round 1 on an unchanged diff yields zero NEW blocking criteria (r1=3 r1'=3, blocking r1=3, all-severity new=0)
+  1 passed, 0 failed
+  kept  11 file(s) -> .../acceptance/evidence/case12/2026-09-15-trial3
+```
+
+Evidence: `acceptance/evidence/case12/2026-09-15-trial3/` — committed. Both rounds `claude-opus-5`.
+
+```
+round 1     blocking {S2, S4, C1}    S2, S4 at line 3 (purge); C1 at line 2 (db.find)
+round 1'    blocking {S2, S4, C1}    S2, S4 at line 3 (purge); C1 at line 3 (purge)
+new = 0
+```
+
+**1 pass in 3 trials.** Under the protocol above it retires neither FAIL: the property is
+stability, and a set unstable twice and stable once is unstable. The FAIL branch never ran, so no
+`sp*.txt` was written; the character was read from the JSON directly.
+
+**The prediction's mechanism held; its draw did not.** The purge line's labels did come from
+{S2, S4} — but both rounds drew BOTH, so there was nothing to relabel. Nothing was cited outside
+the three seeds in either round. That is the "bounded population, unstable labels" reading of
+2026-09-06, now on disk rather than inferred from a printout.
+
+**S4 is a coin, and today it was measured.** Case 13's round 1 audited this same diff — same
+model, same tier, same hour — and cited {C1, S2}: S4 folded into S2. Across the three readable
+rounds today on THIS diff (case 13's round 1, case 12's two), **S2 was cited 3 of 3 and S4 2 of
+3.** Add the four earlier rounds whose S4 status the printouts fix — 09-03 (miss, hit) and 09-06
+(miss, hit) — and **S4 is cited in 4 of 7 rounds on this diff.** (Case 13's round 2 missed it too,
+on the fix diff; consistent, not counted.) So the marginal seed that case 17's cliff, case 13's
+tally and case 12's leak all turn on has a first per-round rate: **about one half.**
+
+That rate says what this fixture can and cannot measure. The metric counts ids new to the second
+round only, so on this diff the case FAILS exactly when round 1 misses S4 and round 1' finds it —
+**about one trial in four by the seed's construction**, and passes the other three. A PASS on
+this fixture is therefore the expected draw and is not evidence of stability; the two FAILs are
+the informative events, and both were S4 arriving on a span already cited. The instrument is
+sound — a genuinely new citation would still be caught and scored as one — but on this corpus it
+is mostly measuring S4's coin, not the schema.
+
+**One thing the metric cannot see.** C1 moved from the `db.find` line to the `db.purge` line
+between rounds with its id unchanged. Not a leak by any reading in the protocol, and the
+harness reads spans only on the FAIL branch, so it is recorded here and nowhere else.
+
+**Next measurement, if one is bought.** Not another trial here — a fixture whose seeds are all
+cited at near 1 or near 0, so a leak, when it comes, cannot be S4's coin. The same difficulty
+ladder the saturation section asks for would serve both cases.
 
 ### Case 12, trial 3 — the protocol, declared BEFORE the run (2026-09-15)
 
@@ -1958,9 +2008,10 @@ Reconcile the tally against the issue before quoting one.
 **Fix-and-re-audit drift ✅** — case 13, drift=0 on a fixture that can now show drift, 3 of 3
 trials; the one readable trial shows S4 uncited by both rounds, so the zero is one recall miss
 from a one, and that one would be case 12's mechanism rather than a new finding.
-**Idempotence ❌** — case 12 measured and failed (S4 leaked on re-audit of an unchanged diff),
-and since CHARACTERISED: the leak is a RELABEL, 1 relabel and 0 new citations. A measured
-negative, and a smaller one than "the schema is leaking" — not an open item.
+**Idempotence ❌** — case 12: FAIL, FAIL, PASS. The leak is a RELABEL of S4 on a span round 1 had
+already cited, and S4 is cited in about half of all rounds, so on this fixture the case fails one
+trial in four by construction and the PASS retires nothing. Bounded population, unstable
+labels — a measured negative, smaller than "the schema is leaking", and not an open item.
 **Floor ablation ✅ — Cause A CONFIRMED, n=4.** no-floor=0 in 4/4 runs, floor=1,1,1,2, and
 pre-gate == post-gate in every run, so the gate does NOT remove floor-induced false positives.
 Removing the floor is the only defence, not one of two. (The "inconclusive" this block used to

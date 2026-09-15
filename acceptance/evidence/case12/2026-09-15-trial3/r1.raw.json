@@ -1,0 +1,38 @@
+[
+  {
+    "criterion_id": "S2",
+    "criterion_quote": "data loss or irreversible destruction",
+    "severity": "blocking",
+    "file": "src/account.js",
+    "line": 3,
+    "cited_text": "  db.purge(rows);",
+    "fix_verb": "fix-order",
+    "short_summary": "purge runs before archive; rows destroyed unarchived",
+    "summary": "Rows are purged from the database before archive() has persisted them, so any archive failure or unconfirmed call destroys account data with no copy.",
+    "failure_scenario": "closeAccount(user, opts) where archive(rows, opts) throws (e.g. storage unavailable): db.purge already ran, rows are gone, archive never wrote them, data is permanently lost."
+  },
+  {
+    "criterion_id": "S4",
+    "criterion_quote": "failed or impossible rollback",
+    "severity": "blocking",
+    "file": "src/account.js",
+    "line": 3,
+    "cited_text": "  db.purge(rows);",
+    "fix_verb": "fix-order",
+    "short_summary": "destructive purge precedes fallible archive; no rollback",
+    "summary": "The irreversible purge is performed before the fallible archive step, so a failure in archive cannot be rolled back to the pre-close state.",
+    "failure_scenario": "archive(rows, opts) rejects after db.purge(rows) succeeded; caller catches the error but the account rows no longer exist and cannot be restored."
+  },
+  {
+    "criterion_id": "C1",
+    "criterion_quote": "Accounts must only be closed after confirmation",
+    "severity": "blocking",
+    "file": "src/account.js",
+    "line": 2,
+    "cited_text": "  const rows = db.find(user.id);",
+    "fix_verb": "add-guard",
+    "short_summary": "confirmation check removed; unconfirmed users get closed",
+    "summary": "The `user.confirmed` guard was deleted, so closeAccount now purges and archives accounts for unconfirmed users.",
+    "failure_scenario": "closeAccount({id: 7, confirmed: false}, opts) previously threw 'unconfirmed'; now it proceeds to db.find, db.purge, and archive, closing an unconfirmed account."
+  }
+]

@@ -1,0 +1,7 @@
+C1	Accounts must only be closed after confirmation
+S1	incorrect output or silently wrong result
+S2	data loss or irreversible destruction
+S3	security exposure
+S4	failed or impossible rollback
+S5	unbounded resource consumption
+S6	concurrency or ordering hazard

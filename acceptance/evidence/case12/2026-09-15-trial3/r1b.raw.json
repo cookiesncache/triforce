@@ -1,0 +1,38 @@
+[
+  {
+    "criterion_id": "S2",
+    "criterion_quote": "data loss or irreversible destruction",
+    "severity": "blocking",
+    "file": "src/account.js",
+    "line": 3,
+    "cited_text": "db.purge(rows);",
+    "fix_verb": "fix-order",
+    "short_summary": "Rows purged before archive completes",
+    "summary": "Rows are irreversibly purged from the db before archive() runs, so any archive failure destroys the data with no copy retained.",
+    "failure_scenario": "closeAccount(user, opts) where archive(rows, opts) throws (e.g. storage unavailable): db.purge has already deleted the rows; exception propagates and the account data is gone."
+  },
+  {
+    "criterion_id": "S4",
+    "criterion_quote": "failed or impossible rollback",
+    "severity": "blocking",
+    "file": "src/account.js",
+    "line": 3,
+    "cited_text": "db.purge(rows);",
+    "fix_verb": "fix-order",
+    "short_summary": "No rollback path if archive fails after purge",
+    "summary": "Purge is committed unconditionally before archive, leaving no way to restore rows when the subsequent archive step fails.",
+    "failure_scenario": "archive() rejects mid-write; caller catches and retries closeAccount(user, opts): db.find(user.id) now returns empty, archive produces an empty/partial record, and the original rows cannot be recovered."
+  },
+  {
+    "criterion_id": "C1",
+    "criterion_quote": "Accounts must only be closed after confirmation",
+    "severity": "blocking",
+    "file": "src/account.js",
+    "line": 3,
+    "cited_text": "db.purge(rows);",
+    "fix_verb": "add-guard",
+    "short_summary": "Confirmation guard removed; unconfirmed accounts purged",
+    "summary": "The `if (!user.confirmed) throw` guard was deleted, so closeAccount purges and archives an account regardless of confirmation state.",
+    "failure_scenario": "closeAccount({ id: 42, confirmed: false }, opts): previously threw 'unconfirmed'; now db.purge deletes user 42's rows and archive runs."
+  }
+]
