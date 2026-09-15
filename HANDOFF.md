@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 230 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 232 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -741,6 +741,60 @@ measured. That is INVARIANT 10 applied to metadata, and it is checked.
 a model, and no id can be recovered after the fact. The saturation question stays open for the runs
 that produced it. What changes is that the next batch can answer it, and that a future reader
 comparing two runs can tell whether they were served by the same model instead of assuming it.
+
+### How saturated is it, and when should the next corpus be hardened (2026-09-15)
+
+Two questions were put to the numbers: how do we avoid needing to harden again, and what would be a
+defensible point at which to do it.
+
+**How saturated, in numbers.** Against the early rate as a null, the late window is extreme; the
+2x2 is significant on an exact test; and the decision-relevant figure is neither of those but the
+price of an answer.
+
+```
+binomial, H0: p_ceiling = 1/7 (the early rate)   P(>= 5 ceilings in 6)  = 0.00031
+Fisher exact, two-tailed, 1/7 vs 5/6                                    = 0.029
+audits per INFORMATIVE run      early 12   ->   late 60   (all 13 runs: 19)
+```
+
+**Those p-values are not a test, and must not be quoted as one.** The split point — run I — was
+chosen after seeing the data. Post hoc, so they are hypothesis-generating. A number that answers
+"how surprising is the window I picked because it looked surprising" is the kind of result this
+file exists to refuse.
+
+**So the rule is pre-registered instead, and it is now in the suite.** `run.sh` warns when
+**3 or more of the last 6 case-17 runs were ceilings**, reading the same results table the
+run-count check counts, so run history keeps one source of truth.
+
+```
+window      fires when     false alarm @ 1/7    power @ 0.5   @ 0.7    would have fired at
+last 6      >= 3 ceilings        4.2%               0.66       0.93    run L
+last 10     >= 4 ceilings        4.3%               0.83       0.99    run L
+```
+
+Run against the recorded history, `m=6, k=3` fires at **run L** — two runs and twenty audits before
+a human noticed at run N. It is a WARNING and never a failure: a spent corpus is not a broken
+suite, and hardening restarts every tally, so the decision stays with the author. `_SAT_M` and
+`_SAT_K` are one constant each. Probed by removing the last three ceilings from the table: the
+warning goes quiet, and returns when they are restored.
+
+**Avoiding the next cliff is a design question, and the honest answer is that it cannot be avoided,
+only made gradual and visible.** Any fixed corpus saturates against an improving model. What made
+THIS one fall off a cliff rather than degrade is structural: four seeds, of which exactly ONE — S4
+— is marginal. The entire discriminating power of every arm comparison is one Bernoulli trial, so
+when (a)'s hit rate on S4 approaches 1 the informative rate goes to 0 at once rather than sliding.
+Three changes would fix that, in descending value:
+
+1. **A difficulty ladder instead of one marginal seed.** Roughly eight seeds spanning obvious to
+   very subtle. A ceiling then requires finding ALL of them, which is far less likely, and
+   resolution is lost slowly from the easy end instead of all at once.
+2. **Rotate the host per run** rather than fixing one. Ceiling risk is per-host; saturation would
+   have to arrive everywhere simultaneously.
+3. **The tripwire above**, so the corpus reports its own exhaustion rather than waiting to be
+   noticed.
+
+Model provenance, added the previous day, is the fourth piece: when saturation does arrive it
+distinguishes a corpus that was outgrown from an environment that moved.
 
 ### THE CORPUS HAS SATURATED: five of the last six runs were ceilings (2026-09-14)
 
@@ -1706,7 +1760,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **230** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **232** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
@@ -1740,7 +1794,11 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
   only if the transport still behaves identically), that the id is captured and deduplicated,
   that the transport still works with no side channel configured, that case 17 opens it, and
   that a missing id is NAMED rather than printed blank — a blank reads as 'nothing changed',
-  which is a claim nobody measured), offline, currently green. Keep it green.
+  which is a claim nobody measured,
+  + 1 that every repo path the README names exists, after it was found pointing at
+  `scripts/gate.sh` for the one component whose being a script is its own argument,
+  + 1 arming a PRE-REGISTERED saturation tripwire over the last 6 runs), offline,
+  currently green. Keep it green.
 
   Every check added on 2026-09-06 was probed for vacuity by breaking the thing it guards.
   A green that could not have been red is worth nothing, and this file has already

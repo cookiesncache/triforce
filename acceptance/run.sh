@@ -190,6 +190,29 @@ else
   echo "  skip  Tier-1 inventory — triforce is not installed in this environment"
 fi
 
+# EVERY REPO PATH THE README NAMES MUST EXIST.
+#
+# Found 2026-09-14 by reading the README as a new user would, with nothing else
+# open: it pointed at `scripts/gate.sh` for the gate -- the one component whose
+# being a script rather than a prompt is the README's own argument -- and there
+# is no scripts/ directory. The file is at skills/triforce/scripts/gate.sh. A
+# reader following the README alone would have concluded the claim was false.
+#
+# Only backticked paths CONTAINING A SLASH and ending .sh/.md/.json are checked,
+# and only those starting with an alphanumeric: `.claude/settings.json` and
+# `.worktreeinclude` are things the USER creates, not files this repo ships.
+_rmpaths=$(grep -oE '`[A-Za-z0-9_][A-Za-z0-9_./-]*\.(sh|md|json)`' README.md 2>/dev/null \
+           | tr -d '`' | grep '/' | sort -u)
+_rmmiss=""
+for _p in $_rmpaths; do
+  [ -e "$_p" ] || _rmmiss="$_rmmiss $_p"
+done
+if [ -z "$_rmmiss" ]; then
+  sok "every repo path the README names exists ($(printf '%s' "$_rmpaths" | wc -w | tr -d ' ') checked)"
+else
+  sbad "the README points at a path this repo does not have:$_rmmiss"
+fi
+
 # The README carries SHAPE, not figures: "No dollar figures, benchmark
 # percentages, or context-window numbers: those go stale and the README is not
 # where they should live." The project's own acceptance bars (70/50) are spec
@@ -1658,6 +1681,42 @@ else
   sbad "case 15 cannot distinguish a gated-away floor effect from no floor effect"
 fi
 
+# ---- SATURATION TRIPWIRE: the corpus says when it is exhausted -------------
+#
+# Found by eye on 2026-09-14, five runs late: the ceiling rate went from 1 in 7
+# to 5 in 6 and nobody noticed until three had come in a row. A ceiling buys one
+# tie for arm (b) and nothing for (c), (d) or (e), so the cost of NOT noticing is
+# 10 audits a run. Early 12 audits per informative run, late 60.
+#
+# PRE-REGISTERED, and that is the point. The 2026-09-14 split (run I) was chosen
+# after seeing the data, so its p-values -- binomial 0.00031 against the early
+# rate, Fisher exact two-tailed 0.029 -- are hypothesis-generating and not a
+# test. A threshold fixed IN ADVANCE is testable. This one fires on >= 3 ceilings
+# in the last 6 runs: 4.2% false alarm under the early rate, power 0.66 against a
+# true rate of 0.5 and 0.93 against 0.7. Run against the recorded history it
+# fires at run L -- two runs and 20 audits before a human saw it.
+#
+# It reads the same results table the run-count check counts, so run history has
+# one source of truth. It is a WARNING, never a failure: the corpus being spent
+# is not the suite being broken, and hardening is the author's call.
+_SAT_M=6; _SAT_K=3
+_ceil=$(awk '/^host       run  noise/{f=1;next} f&&/^```/{exit} f&&NF{print (/CEILING/ ? 1 : 0)}' HANDOFF.md)
+_ncei=$(printf '%s\n' "$_ceil" | grep -c . 2>/dev/null || printf 0)
+if [ "${_ncei:-0}" -ge "$_SAT_M" ]; then
+  _win=$(printf '%s\n' "$_ceil" | tail -n "$_SAT_M" | grep -c '^1$' || true)
+  if [ "${_win:-0}" -ge "$_SAT_K" ]; then
+    echo "  note  SATURATION TRIPWIRE: $_win of the last $_SAT_M case-17 runs were ceilings."
+    echo "        A ceiling buys one tie for (b) and NOTHING for (c), (d) or (e). At this"
+    echo "        rate a further run has better than even odds of yielding nothing for the"
+    echo "        three arms with open questions. Harden the corpus or stop buying runs --"
+    echo "        this is a warning, not a failure, and hardening restarts every tally on a"
+    echo "        new truth set, so it is the author's call. See the saturation section."
+  fi
+  sok "the saturation tripwire is armed over the last $_SAT_M runs (>= $_SAT_K ceilings warns)"
+else
+  sok "the saturation tripwire is present; fewer than $_SAT_M recorded runs, so it is not yet armed"
+fi
+
 # THREE SUMMARY BLOCKS HAVE NOW DRIFTED FROM THE SAME TABLE.
 #
 # HANDOFF's case-17 results table is the source of truth: one row per run. The
@@ -1719,6 +1778,7 @@ echo " summary"
 echo "=============================================================="
 echo "  suites: $SUITES_OK/$SUITES green"
 echo "  checks: $CHECKS"
+
 
 # The README carries this number, and only this number. Verify it rather than
 # trusting it: it was wrong by 89 before anyone noticed.

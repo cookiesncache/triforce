@@ -132,7 +132,7 @@ nit** — demoting guarantees the findings array is never empty, which is the re
 | **NOVELTY** | cited line was **changed** by this diff (added lines *and* deletion loci) |
 | **BEHAVIOR-DELTA** | `fix_verb` from a closed enum; cosmetic verbs fail by construction |
 
-The gate is **a script, not a prompt paragraph** (`scripts/gate.sh`). That is deliberate: an
+The gate is **a script, not a prompt paragraph** (`skills/triforce/scripts/gate.sh`). That is deliberate: an
 ablation that disables an instruction proves nothing, because the model may comply anyway. An
 ablation that disables a filter proves the filter was load-bearing. On synthetic candidates it
 shows **0 survivors gated vs 4 ungated**.
@@ -172,7 +172,7 @@ Everything below is either a number or an honest blank. Nothing deferred is repo
 Installs from the pinned SHA and loads with its full inventory — 6 agents, 2 skills, 1 hook —
 at a projected **~694 tokens always-on**, recorded here as the baseline for future comparison.
 
-`bash acceptance/run.sh` — **230 checks green**:
+`bash acceptance/run.sh` — **232 checks green**:
 
 | Suite | Checks | Covers |
 |---|---|---|
