@@ -662,6 +662,23 @@ else
   sbad "case 13 has no guard against auditing an empty round-2 diff"
 fi
 
+# Each round audits from its OWN diff file. Round 2 used to overwrite
+# $WORK/diff.txt, so the first kept run of case 13 (trial 3, 2026-09-15)
+# retained round 2's input and not round 1's; case 15 then wrote over it a
+# third time. A kept run must hold what every round saw. Case 13 must also hand
+# DIFF_FILE back, or case 15 would audit round 2's diff.
+_c13blk="$(sed -n '/^# CASE 13/,/^# CASE 15/p' acceptance/live-cases.sh | grep -vE '^[[:space:]]*#')"
+_c15blk="$(sed -n '/^# CASE 15/,/^# CASE 17/p' acceptance/live-cases.sh | grep -vE '^[[:space:]]*#')"
+if printf '%s' "$_c13blk" | grep -qF 'DIFF_FILE="$WORK/diff-r2.txt"' \
+   && ! printf '%s' "$_c13blk" | grep -qF '> "$WORK/diff.txt"' \
+   && printf '%s' "$_c13blk" | grep -qF 'DIFF_FILE="$WORK/diff.txt"' \
+   && printf '%s' "$_c15blk" | grep -qF 'DIFF_FILE="$WORK/diff-clean.txt"' \
+   && ! printf '%s' "$_c15blk" | grep -qF '> "$WORK/diff.txt"'; then
+  sok "case 13's round 2 and case 15 each audit from their own diff file, and case 13 hands DIFF_FILE back"
+else
+  sbad "a later round overwrites the shared diff.txt, so a kept run cannot show what an earlier round saw"
+fi
+
 # --- case 15 must build its own clean diff, and ablate a REAL floor ----------
 # It used to `git diff HEAD~1..HEAD` and rely on case 13 having committed the fix
 # first. Run as `--case 15`, case 13 has not run, HEAD is the DEFECTIVE commit,

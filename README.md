@@ -172,7 +172,7 @@ Everything below is either a number or an honest blank. Nothing deferred is repo
 Installs from the pinned SHA and loads with its full inventory — 6 agents, 2 skills, 1 hook —
 at a projected **~694 tokens always-on**, recorded here as the baseline for future comparison.
 
-`bash acceptance/run.sh` — **236 checks green**:
+`bash acceptance/run.sh` — **237 checks green**:
 
 | Suite | Checks | Covers |
 |---|---|---|

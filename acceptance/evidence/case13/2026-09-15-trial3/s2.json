@@ -1,0 +1,14 @@
+[
+  {
+    "criterion_id": "S2",
+    "criterion_quote": "data loss or irreversible destruction",
+    "severity": "blocking",
+    "file": "src/account.js",
+    "line": 6,
+    "cited_text": "db.purge(rows);",
+    "fix_verb": "fix-order",
+    "short_summary": "rows purged before archive; archive failure loses data",
+    "summary": "The new `db.purge(rows)` call runs before `archive(rows, opts)`, so any failure in archive leaves the rows destroyed with no archived copy.",
+    "failure_scenario": "closeAccount called for a confirmed user; db.purge deletes the rows; archive(rows, opts) throws (e.g. storage unavailable) \u2192 the exception propagates, the account data is gone, and nothing was archived."
+  }
+]

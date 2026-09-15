@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 236 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 237 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -133,9 +133,10 @@ bash acceptance/live-cases.sh --case 12   # FAILS, and now CHARACTERISED — 202
                                          #   0 new. Bounded population, unstable labels. Still a
                                          #   FAIL, but a different and smaller one than "the
                                          #   schema is leaking". Section below.
-bash acceptance/live-cases.sh --case 13   # PASSED — 2026-09-03, drift=0, verifier enum clean.
-                                         #   Its FIRST pass that day was VACUOUS (empty round-2
-                                         #   diff); fixture fixed, this is the real one. n=1.
+bash acceptance/live-cases.sh --case 13   # PASSED — drift=0 on 3 of 3 trials (2026-09-03, -15, -15).
+                                         #   The first 09-03 pass was VACUOUS (empty round-2 diff);
+                                         #   fixture fixed. Trial 3 is the only one whose sets
+                                         #   survive: S4 uncited by BOTH rounds. Section below.
 bash acceptance/live-cases.sh --case 15   # PASSED — 2026-09-06, n=4, on a REAL ablation.
                                          #   no-floor=0 in 4/4 runs; floor=1,1,1,2. The floor
                                          #   manufactures false positives on a clean diff, and
@@ -596,6 +597,49 @@ context shows the guard as unchanged in round 2, where round 1 showed it deleted
 `s1.json`, `s2.json`, their `.raw.json` pre-gate arrays, both blocking lists, `diff.txt` as
 audited, and `models.txt`. Small text, committed, so the character above can be checked by a
 reader rather than taken from this file.
+
+### Case 13, trial 3 — drift=0, 3 of 3, and the sets can finally be READ (2026-09-15)
+
+```
+case 13 — fix-and-re-audit (rounds 1..3)
+  ok    round 2 cites no criterion that was not blocking in round 1 (drift=0)
+  ok    verifier emitted a closed-enum status and nothing outside it
+  2 passed, 0 failed
+  kept  9 file(s) -> .../acceptance/evidence/case13/2026-09-15-trial3
+```
+
+Evidence: `acceptance/evidence/case13/2026-09-15-trial3/` — committed. Both rounds answered by
+`claude-opus-5`.
+
+```
+round 1 (base -> seeded)   blocking {C1, S2}     S2 at line 3, C1 at line 2
+round 2 (base -> fix)      blocking {S2}         S2 at line 6
+drift = {S2} \ {C1, S2} = 0
+```
+
+**What the sets say that the tally could not.** Three things, and the first is the one that
+matters:
+
+1. **S4 was cited by NEITHER round.** The purge is a rollback-impossible defect as well as a
+   destructive one, and both rounds folded it into S2 — round 1's S2 summary is "purge runs before
+   archive; archive failure loses rows", which is S4's story under S2's label. So this drift=0 is
+   one S4 citation away from drift=1, and by the protocol above that 1 would be **character 3 — a
+   recall miss**, the case-12 mechanism, not an invention. The same marginal seed that drives case
+   12's leak and case 17's cliff is doing the same thing here; it is just doing it in the
+   direction that reads as a pass. Case 13's tally is therefore weaker than 3 of 3 sounds:
+   it has been measuring drift on a fixture where the one criterion able to drift is the one the
+   reviewer usually folds into another.
+2. **C1 was cited in round 1 and gone in round 2**, on the guard's line, with a correct
+   `add-guard` verb. The fix was seen as a fix. That is the E1 path doing what it should.
+3. **The retained `diff.txt` was round 2's.** Round 2 overwrote round 1's diff, so the first kept
+   run held the input to one round and the output of both. The `line: 3` versus `line: 6`
+   citations are the only proof on disk that the rounds saw different diffs. Fixed: round 2 now
+   audits from `diff-r2.txt`, case 15 from `diff-clean.txt`, `DIFF_FILE` is handed back, and one
+   check holds it (237).
+
+**Tally: drift=0 on 3 of 3 trials, one of them readable.** Still characterisation. The next
+trial that matters is not another roll on this fixture — it is one where S4 is cited in round 1,
+so that a drift, if it comes, is measured against a round 1 that saw the marginal seed.
 
 ### Case 13, trial 2 — drift=0, and the evidence was LOST by the harness (2026-09-15)
 
@@ -1822,7 +1866,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **236** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **237** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
@@ -1878,7 +1922,9 @@ than paraphrase it, and a fraction reproduced from memory is how the last one we
 Reconcile the tally against the issue before quoting one.
 
 `Tier 1 checks pass` ✅. `clean-return rate ≥ 70%` ✅ — 91% (11/12), case 11.
-**Fix-and-re-audit drift ✅** — case 13, drift=0 on a fixture that can now show drift, n=1.
+**Fix-and-re-audit drift ✅** — case 13, drift=0 on a fixture that can now show drift, 3 of 3
+trials; the one readable trial shows S4 uncited by both rounds, so the zero is one recall miss
+from a one, and that one would be case 12's mechanism rather than a new finding.
 **Idempotence ❌** — case 12 measured and failed (S4 leaked on re-audit of an unchanged diff),
 and since CHARACTERISED: the leak is a RELABEL, 1 relabel and 0 new citations. A measured
 negative, and a smaller one than "the schema is leaking" — not an open item.

@@ -549,10 +549,17 @@ function closeAccount(user, opts) {
 }
 JS
   git commit -qam "restore confirmation guard" >/dev/null 2>&1
-  git diff -W HEAD~2..HEAD > "$WORK/diff.txt"
+  # ITS OWN FILE. Round 2 used to overwrite $WORK/diff.txt, so the first kept
+  # run (trial 3, 2026-09-15) retained round 2's diff and not round 1's -- the
+  # two JSONs cite the purge at line 3 and line 6, proof they saw different
+  # diffs, and only one of them could be read back. Each round's input is now
+  # retained beside its output. DIFF_FILE is restored after, since case 15
+  # builds on the shared fixture's file next.
+  git diff -W HEAD~2..HEAD > "$WORK/diff-r2.txt"
+  DIFF_FILE="$WORK/diff-r2.txt"
 
   # and prove it, every run. An empty round-2 diff measures nothing at all.
-  if ! grep -q '[^[:space:]]' "$WORK/diff.txt" 2>/dev/null; then
+  if ! grep -q '[^[:space:]]' "$WORK/diff-r2.txt" 2>/dev/null; then
     echo
     echo "  ABORT — case 13's round-2 diff is EMPTY, so round 2 has nothing to audit."
     echo "  drift=0 would hold by construction. The fixture's fix has drifted back"
@@ -589,6 +596,7 @@ JS
     bad "verifier emitted $stray token(s) outside its closed status enum"
     printf '%s\n' "$vout" | head -5 | sed 's/^/        /'
   fi
+  DIFF_FILE="$WORK/diff.txt"
   echo
 fi
 
@@ -671,8 +679,11 @@ module.exports = {
 };
 JS
   git commit -qam "restore the guard, stop purging, add account helpers" >/dev/null 2>&1
-  git diff -W HEAD~1..HEAD > "$WORK/diff.txt"
-  if ! grep -q '[^[:space:]]' "$WORK/diff.txt" 2>/dev/null; then
+  # Its own file too, for the same reason as case 13's round 2: in a full run
+  # this used to be the third diff written over $WORK/diff.txt.
+  git diff -W HEAD~1..HEAD > "$WORK/diff-clean.txt"
+  DIFF_FILE="$WORK/diff-clean.txt"
+  if ! grep -q '[^[:space:]]' "$WORK/diff-clean.txt" 2>/dev/null; then
     echo
     echo "  ABORT — case 15's clean diff is EMPTY. A reviewer handed nothing will"
     echo "  return nothing, and 'clean diff returns zero violations' would hold by"
@@ -683,7 +694,7 @@ JS
   # floor arm can only be shown to manufacture findings if there is something to
   # manufacture them about. Too small and floor=0 vs no-floor=0 is guaranteed
   # before the model is called, which is what 2026-09-06 measured.
-  _c15add=$(grep -c '^+[^+]' "$WORK/diff.txt" 2>/dev/null || true)
+  _c15add=$(grep -c '^+[^+]' "$WORK/diff-clean.txt" 2>/dev/null || true)
   if [ "${_c15add:-0}" -lt 25 ]; then
     echo
     echo "  ABORT — case 15's clean diff adds only ${_c15add:-0} lines. A floor arm"

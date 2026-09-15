@@ -1,0 +1,13 @@
+diff --git a/src/account.js b/src/account.js
+index 829451a..d84556a 100644
+--- a/src/account.js
++++ b/src/account.js
+@@ -1,7 +1,8 @@
+ function closeAccount(user, opts) {
+   if (!user.confirmed) {
+     throw new Error('unconfirmed');
+   }
+   const rows = db.find(user.id);
++  db.purge(rows);
+   return archive(rows, opts);
+ }

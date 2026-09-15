@@ -1,0 +1,26 @@
+[
+  {
+    "criterion_id": "S2",
+    "criterion_quote": "data loss or irreversible destruction",
+    "severity": "blocking",
+    "file": "src/account.js",
+    "line": 3,
+    "cited_text": "db.purge(rows);",
+    "fix_verb": "fix-order",
+    "short_summary": "purge runs before archive; archive failure loses rows",
+    "summary": "Rows are irreversibly purged before archive is attempted, so any failure in archive leaves the data destroyed with no copy.",
+    "failure_scenario": "closeAccount(user, opts) where archive(rows, opts) throws (e.g. storage unavailable): db.purge has already deleted the rows, archive never completes, data is gone."
+  },
+  {
+    "criterion_id": "C1",
+    "criterion_quote": "Accounts must only be closed after confirmation",
+    "severity": "blocking",
+    "file": "src/account.js",
+    "line": 2,
+    "cited_text": "const rows = db.find(user.id);",
+    "fix_verb": "add-guard",
+    "short_summary": "confirmation check removed from closeAccount",
+    "summary": "The `user.confirmed` guard was deleted, so closeAccount purges and archives rows for unconfirmed users.",
+    "failure_scenario": "closeAccount({id: 7, confirmed: false}, opts): previously threw 'unconfirmed'; now finds, purges, and archives user 7's rows without confirmation."
+  }
+]
