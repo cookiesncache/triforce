@@ -142,16 +142,20 @@ bash acceptance/live-cases.sh --case 15   # PASSED — 2026-09-06, n=4, on a REA
                                          #   pre-gate == post-gate every time, so THE GATE DOES
                                          #   NOT REMOVE THEM. Cause A confirmed. The earlier
                                          #   "inconclusive" was an untreated arm; see below.
-bash acceptance/live-cases.sh --case 17   # SPLIT VERDICT — 2026-09-10, 10 runs on 2 hosts
+bash acceptance/live-cases.sh --case 17   # SPLIT VERDICT — 2026-09-10, 11 runs on 2 hosts
                                          #   verified CLEAN on the exact diff they audit.
                                          #   The issue's LITERAL clause HOLDS: arm (b), a forced
                                          #   INDEPENDENT round, has never beaten one round --
-                                         #   10 runs, 10 ties, 0 wins, on any host, ever.
+                                         #   11 runs, 11 ties, 0 wins, on any host, ever.
                                          #   Arm (c), a CHAINED round at the SAME budget as (a),
                                          #   beats it on BOTH hosts: 5 wins, 2 ties over 7
-                                         #   informative runs (3 ceilings correctly refused).
+                                         #   informative runs (4 ceilings correctly refused).
                                          #   Arm (e) ties (a) at HALF the budget, n=2.
-                                         #   Prefer --host 0f581cd2...; it has never ceilinged.
+                                         #   Arm (f) SKIPS: no agent declares an effort, so (a)
+                                         #   already is the production auditor.
+                                         #   Prefer --host 0f581cd2... on the numbers (3
+                                         #   informative in 4 vs 4 in 7), NOT because it is
+                                         #   ceiling-free -- run L was its first ceiling.
                                          #   The 2026-09-06 text here -- "(c) is INCONSISTENT",
                                          #   "first false positives ever measured" -- is
                                          #   SUPERSEDED: that n=3 predated --verify-host, and
