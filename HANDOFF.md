@@ -148,11 +148,12 @@ bash acceptance/live-cases.sh --case 17   # SPLIT VERDICT — 2026-09-14, 13 run
                                          #   The issue's LITERAL clause HOLDS: arm (b), a forced
                                          #   INDEPENDENT round, has never beaten one round --
                                          #   13 runs, 13 ties, 0 wins, on any host, ever.
-                                         #   Arm (c), a CHAINED round at the SAME budget as (a),
-                                         #   beats it on BOTH hosts: 5 wins, 2 ties over 7
-                                         #   informative runs (6 ceilings correctly refused,
-                                         #   FIVE of them in the last six runs -- the corpus
-                                         #   has saturated; read that section first).
+                                         #   Arm (c), a CHAINED round at the SAME budget as (a):
+                                         #   5 wins, 1 LOSS (run C), 2 ties, on both hosts;
+                                         #   paired on S4, p=0.109, every win before run I.
+                                         #   NOT SHIPPED -- decision 2. Five of the last six
+                                         #   runs were ceilings; the corpus has saturated and
+                                         #   is CLOSED at 13 runs -- decision 1.
                                          #   Arm (e) ties (a) at HALF the budget, n=2.
                                          #   Arm (f) SKIPS: no agent declares an effort, so (a)
                                          #   already is the production auditor.
@@ -1042,7 +1043,7 @@ caution.
 
 **The constraint on hardening: it is not free.** Changing the seeds changes the truth set, and
 thirteen runs of tallies are comparable only within one truth set. A harder corpus starts arm (c)'s
-count at zero rather than continuing 5 wins in 7, and that is the honest price, not a reason to
+count at zero rather than continuing 5 wins, 1 loss and 2 ties, and that is the honest price, not a reason to
 avoid it. An added FIFTH marginal seed rather than an altered `S4` would at least keep the existing
 four scoreable, but it is still a different truth set and this file must not pool the two.
 
@@ -1228,7 +1229,8 @@ because (c) reached `S4`. The over-reach was in the prose here, promoting a with
 property of the host.
 
 **Corrected reading of chaining:** arm (c) beats one round on BOTH verified hosts — 5 wins and 2
-ties across 7 informative runs. The host changes how OFTEN chaining wins, not whether it can. The
+ties across 7 informative runs. (Corrected again 2026-09-15: run C is a LOSS for (c) and belongs
+in the tally; 5W 1L 2T, paired p = 0.109. See decision 2.) The host changes how OFTEN chaining wins, not whether it can. The
 "it does not generalise" section is refuted and marked as such below.
 
 **Arm (e) is now n=2, and it ties both times.**
@@ -1349,10 +1351,13 @@ host       run  noise      (a)     (b)     (c)     (d)     (e)     what happened
 
 ```
 (b) vs (a)   13 runs, 13 TIES, 0 wins. Arm (b) has never beaten one round on any host, ever.
-(c) vs (a)   7 informative runs: 5 WINS, 2 ties, and it has now won on BOTH hosts. (Runs C, I,
-             J, L, M and N excluded -- (a) at ceiling, so (c) could not win. That is SIX
-             refused runs of thirteen, five of them in the last six: see the saturation
-             section. The 7 informative runs are not getting cheaper.)
+(c) vs (a)   5 WINS, 1 LOSS, 2 ties over 8 runs with power in at least one direction; it has
+             won on BOTH hosts. CORRECTED 2026-09-15: this line read "7 informative, 5 wins,
+             2 ties" and excluded run C, where (c) LOST 0.857 to 1.000 -- the ceiling rule is
+             sound for (b), which cannot beat a perfect (a), and was applied to (c) by analogy.
+             Paired on S4: 5 vs 1 discordant, McNemar one-sided p = 0.109. Every (c)-only win
+             is before run I; after it both arms reach S4 every time. See decision 2.
+             (Runs I, J, L, M, N are ties at 1.000 -- five of the last six: see saturation.)
 (f) vs (a)   NOT APPLICABLE since 2026-09-14: no agent declares an effort, so (a) IS the
              production auditor and the arm SKIPS. It stays built for the day one is pinned.
 (e) vs (a)   2 informative runs: 2 TIES, on HALF the budget, on two different hosts. The
@@ -1810,13 +1815,39 @@ the author reopens it; a cold session must not reopen one because the numbers lo
 Decided against hardening with the tripwire firing (5 ceilings in the last 6) and the marginal seed
 measured at about one half per round. The reasoning the decision was taken on: the one-round
 premise is already answered as far as any corpus can answer it — the issue's literal clause holds
-(a forced INDEPENDENT round never won, 13 of 13) and a CHAINED round beats one round (5 wins, 2
-ties, 7 informative, both hosts); (d) is stuck on the host, not the corpus; and the only question a
+(a forced INDEPENDENT round never won, 13 of 13) and a CHAINED round's lead is as measured as it
+will get here (5 wins, 1 loss, 2 ties — decision 2); (d) is stuck on the host, not the corpus; and the only question a
 harder corpus would serve is (e)'s efficiency claim, on which nothing downstream depends. The
 tallies stand as the measurement of record. No further case 17 runs are bought on this corpus. The
 tripwire stays armed and keeps warning; that is a reminder, not a blocker. If a run is ever bought
 again for a specific reason, it is bought on this corpus knowing the odds, or on a new one knowing
 the tallies restart.
+
+**2. Chaining is NOT shipped. Production stays K=2 parallel. The tally is corrected.**
+The "(c) 5 wins, 2 ties, 0 losses over 7 informative runs" this file carried excluded **run C,
+where (c) scored 0.857 against (a)'s 1.000 — a loss.** It was excluded by the ceiling rule, which
+is sound for arm (b) (b ⊇ a, so b cannot beat a perfect a) and was applied to (c) by analogy; but
+(c) is not a superset of (a), and a run where (a) reaches S4 and (c) does not is a real observation
+against chaining. Every F1 difference in the table is S4, so the honest comparison is paired
+per-run S4 hits:
+
+```
+(a) reaches S4    6 of 13          (c) reaches S4   10 of 13
+(c) hit, (a) missed    1 D E H K   (5)
+(a) hit, (c) missed    C           (1)
+both  I J L M N        neither  F G
+McNemar exact, 5 vs 1 discordant:  one-sided p = 0.109   (the 5W/0L reading gave 0.031)
+early runs 1..H:  (a) 1/7  (c) 4/7          late runs I..N:  (a) 5/6  (c) 6/6
+```
+
+The effect is real-sized (0.46 → 0.77 on the one marginal seed) and under-powered, and every
+(c)-only win sits before run I — after it both arms reach S4 every time. Whether the corpus
+stopped discriminating or the environment moved at run I, the record cannot say. Shipping a K=2
+chain on that would be a design change on five runs — the standard this file held arm (e) to.
+The issue's own rule names arm (b), which never won; the rule is not triggered and the one-round
+premise stands as specified. Chaining is recorded as a lead for a future corpus, not a result to
+build on. The tally lines elsewhere in this file now say 5 wins, 1 loss, 2 ties over 8 runs with
+power in at least one direction.
 
 ### Two deviations from the issue's literal text, both deliberate
 
@@ -2036,10 +2067,10 @@ report was an untreated arm and is superseded — see the n=4 section above.)
 **The one-round premise ⚠️ MEASURED, and the verdict is SPLIT.** 13 runs across 2 hosts verified
 CLEAN on the exact diff they audit. The issue's literal clause — a forced second INDEPENDENT
 round — **HOLDS: arm (b) has never beaten one round, 13 of 13, on any host.** A CHAINED second
-round at the same audit budget **does** beat it, on **both** hosts: 5 wins, 2 ties over 7
-informative runs. So "one round is enough" is defended exactly as specified and falsified as a
-general claim. That is a decision for the author, not a measurement gap — the corpus stopped
-being the blocker on 2026-09-07, when --verify-host gave the corpus its first readable hosts.
+round at the same audit budget beat it more often than not — 5 wins, 1 loss, 2 ties, paired
+p = 0.109, every win before run I. So "one round is enough" is defended exactly as specified, and
+chaining is an under-powered lead rather than a falsification. **Decided 2026-09-15: chaining is
+not shipped and the corpus is not hardened** — see the decisions section.
 
 Nothing is blocked on access any more — all three environmental blockers are cleared.
 Whatever remains is blocked on **work**, not permission, except case 16, which needs production
