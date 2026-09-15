@@ -21,8 +21,13 @@ DEFERRED=()
 # it only looks for percentages and dollar figures. A README that understates
 # its own project is lying just as much as one that overstates it.
 CHECKS=0
+SUITE_ROWS=""
 run_suite() {
-  local name="$1" script="$2" out rc n
+  # $3 is the README table's row label for this suite, so the per-suite figure
+  # the README carries is checked and not just the headline sum. Found by an
+  # outside review on 2026-09-15: the table read 166/7/10/31/10 = 224 under a
+  # headline of 255, and the headline check alone could not see it.
+  local name="$1" script="$2" label="${3:-}" out rc n
   SUITES=$((SUITES + 1))
   echo
   echo "=============================================================="
@@ -33,6 +38,7 @@ run_suite() {
   [ "$rc" -eq 0 ] && SUITES_OK=$((SUITES_OK + 1))
   n=$(printf '%s' "$out" | sed -n 's/^  \([0-9][0-9]*\) passed,.*/\1/p' | tail -1)
   CHECKS=$((CHECKS + ${n:-0}))
+  [ -n "$label" ] && SUITE_ROWS="$SUITE_ROWS$label=${n:-0}\n"
 }
 
 defer() { DEFERRED+=("$1"); }
@@ -1850,10 +1856,10 @@ CHECKS=$((CHECKS + SPASS))
 SUITES=$((SUITES + 1)); [ "$SFAIL" -eq 0 ] && SUITES_OK=$((SUITES_OK + 1))
 
 # --- unit suites ------------------------------------------------------------
-run_suite "risk score / tiering"        acceptance/test-risk-score.sh
-run_suite "preflight (case 1)"          acceptance/test-preflight.sh
-run_suite "invocation ledger (cases 8, 9)" acceptance/test-ledger.sh
-run_suite "the four-check gate (cases 10, 14)" acceptance/test-gate.sh
+run_suite "risk score / tiering"        acceptance/test-risk-score.sh "risk score"
+run_suite "preflight (case 1)"          acceptance/test-preflight.sh    "preflight"
+run_suite "invocation ledger (cases 8, 9)" acceptance/test-ledger.sh    "ledger"
+run_suite "the four-check gate (cases 10, 14)" acceptance/test-gate.sh  "gate"
 
 # --- cases that need a live model or a newer CLI ----------------------------
 defer "case 2,3,4,5,6 (isolation, base-targets-orchestrator, sole merge point, cleanup, retention) — need a live model to dispatch link. Run acceptance/probe-harness.sh when authenticated."
@@ -1892,6 +1898,24 @@ for _pair in "README.md:$_rmc" "HANDOFF.md:$_hoc"; do
     echo "  ok    $_f's check count matches the suite ($CHECKS)"
   fi
 done
+# And the per-suite table beneath the headline, row by row. The static row is
+# SPASS; the others were recorded by run_suite.
+SUITE_ROWS="static=$SPASS\n$SUITE_ROWS"
+_rowbad=0
+while IFS='=' read -r _lab _n; do
+  [ -n "$_lab" ] || continue
+  _rm=$(grep -E "^\| $_lab \| [0-9]+ \|" README.md 2>/dev/null | head -1 | awk -F'|' '{gsub(/ /,"",$3); print $3}')
+  if [ -z "$_rm" ]; then
+    echo "  FAIL  README.md's suite table has no '$_lab' row"; _rowbad=1
+  elif [ "$_rm" -ne "$_n" ]; then
+    echo "  FAIL  README.md's suite table says $_lab = $_rm; the suite ran $_n. Update the row."; _rowbad=1
+  fi
+done < <(printf "$SUITE_ROWS")
+if [ "$_rowbad" -eq 0 ]; then
+  echo "  ok    README.md's per-suite table matches every suite's count"
+else
+  SUITES=$((SUITES + 1))
+fi
 echo
 echo "  DEFERRED — not run, and NOT counted as passing:"
 for d in "${DEFERRED[@]}"; do

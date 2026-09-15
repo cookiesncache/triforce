@@ -23,8 +23,12 @@ That failure has two unrelated causes, and they need opposite fixes:
   → **No instruction bounds an unbounded set. Only a schema does.**
 
 So ganondorf does not hunt. It **renders a verdict on a frozen, enumerated criteria list**, and a
-finding that cannot name a criterion has no field in the output schema to occupy. The bound
-`|blocking| ≤ |criteria|` is a theorem over an artifact the auditee did not write.
+finding that cannot name a criterion has no field in the output schema to occupy. The bound is on
+the **criteria a blocking finding can name** — a closed set the auditee did not write — not on the
+number of citations: one criterion cited on two spans is two findings, SAFETY citations are exempt
+from the finding cap, and `gate.sh` deduplicates neither. (This paragraph used to claim
+`|blocking| ≤ |criteria|` as a theorem; the retained case-12 evidence has two blocking citations on
+one line, and the gate keeps both.)
 
 ---
 
@@ -176,10 +180,10 @@ at a projected **~694 tokens always-on**, recorded here as the baseline for futu
 
 | Suite | Checks | Covers |
 |---|---|---|
-| static | 166 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no effort pinned in any agent (production runs at the model default every live number was measured at), tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures — plus the measurement harnesses themselves: the headless transport against the Stop-hook defect, every corpus built and each seeded defect matched to the criterion claiming it, ground truth held to a proper subset of the criteria, the falsifier's verdict chain driven to every outcome, each harness telling a missing `claude` apart from an unauthenticated one, and case 17 refusing to score a django host that has not been verified on the exact diff it audits |
+| static | 179 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no effort pinned in any agent (production runs at the model default every live number was measured at), tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures — plus the measurement harnesses themselves: the headless transport against the Stop-hook defect, every corpus built and each seeded defect matched to the criterion claiming it, ground truth held to a proper subset of the criteria, the falsifier's verdict chain driven to every outcome, each harness telling a missing `claude` apart from an unauthenticated one, and case 17 refusing to score a django host that has not been verified on the exact diff it audits |
 | risk score | 7 | additive scoring, categorical floors, T0 content class. Includes a 4-line auth-guard removal reaching **T3** — the case a multiplicative score zeroes out |
 | preflight | 10 | case 1: `baseRef` unset/`fresh` **blocks**, `CLAUDE_CODE_SUBAGENT_MODEL` blocks, version read from the binary |
-| ledger | 31 | cases 8 + 9: caps hold at 4/6/9, counters monotone under every command sequence, dedup on `seen`, and `UNRESOLVED` escalating to a human on the third |
+| ledger | 49 | cases 8 + 9: caps hold at 4/6/9, counters monotone under every command sequence, dedup on `seen`, `UNRESOLVED` escalating to a human on the third, and the case 16 dispositions: `resolve` / `waive` append-only and idempotent, `rate` reading the last 10 audits and writing nothing |
 | gate | 10 | cases 10 + 14: each check kills its own candidate, severity-first ordering, ablation 0 vs 4 |
 
 ### Measured against a live model

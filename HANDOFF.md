@@ -897,6 +897,59 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### An outside review says NOT DEFENSIBLE as a replacement for one Opus session (2026-09-15)
+
+At the author's request an independent Fable 5.1 subagent, read-only and with no live model call,
+assessed whether the recorded evidence makes triforce defensible to ship INSTEAD of a single Opus
+agent at high effort planning and executing in one context. Its report is at
+`evals/2026-09-15-defensibility-review.md`, unedited. The verdict:
+
+> **NOT DEFENSIBLE AS A REPLACEMENT.** Nothing in this repository compares triforce to the
+> baseline. [...] the honest answer is that the question has not been asked yet.
+
+The finding this file must carry, because every section above is written from inside the design:
+**of sixteen claimed benefits, zero are measured against the baseline.** Every live number is the
+tier-2 auditor alone on seeded fixtures, or a clean-rate with no comparator. No end-to-end
+`/triforce` run is recorded anywhere; zelda has never been observed extracting criteria, reviewing
+a plan, dispatching, merging, or writing the ledger. No token or wall-clock figure exists. The
+issue's own definition of done requires the with/without ablation delta and two A/Bs; all three
+are absent, and decision 3 defers two of them until "production experience" — the thing the review
+was asked to authorise.
+
+Three of its specific claims were verified here and were right, and two of them were false
+statements in shipped text:
+
+- **`|blocking| ≤ |criteria|` "is a theorem" was false as implemented.** `gate.sh` keeps
+  `safety + other[:cap]` and deduplicates nothing by criterion; the retained case-12 trial-3
+  evidence has S2 and S4 both blocking on one line. README and `criteria.md` now state the bound
+  that holds: the set of criteria a blocking finding can NAME is closed. Citation count is not
+  bounded by it.
+- **The README's per-suite table summed to 224 under a headline of 255.** The headline check
+  could not see it. Fixed, and `run.sh` now checks the table row by row.
+- **Violation ids hash the cited TEXT**, so C1's span move in case 12 trial 3 — recorded above as
+  "not a leak by any reading in the protocol" — would be a NEW id in production that
+  dedup-against-seen does not match. The instability is larger than the case-12 metric reports.
+
+Also on record from it, unverified here but consistent with everything above: the Stop hook is a
+prompt-type hook on matcher `*`, so it runs a model judgement at every turn end of every session
+with the plugin installed; the gate has never been observed discarding anything on live output
+(12 retained audits, 0 discards); the verifier is instructed to return RESOLVED when it cannot
+quote current text and its false-RESOLVED rate is unmeasured; the architectural cost estimate is
+2.5-4x tokens on a tier-2 change, labelled an estimate.
+
+**What would change the verdict**, per the review: Arm A of `evals/README.md`, the with/without
+ablation, run paired on ~10 django commits with hidden tests as ground truth, 2 arms x 2
+repetitions, model id recorded, with a pre-registered rule (B >= A on hidden-test pass AND median
+token ratio <= 2.0 for "defensible as a default"; B >= A with ratio > 2.0 for "opt-in on T2/T3
+only"; B failing to complete headlessly in > 2 of 20 for "production path unverified"). It also
+names the cheaper narrower fallback: case 11's 32 diffs through a plain `claude -p --model opus`
+review, findings adjudicated on both sides, FP per audit compared at n=32 pairs.
+
+**This is now the measurement phase's closing assessment.** The decisions above stand; what they
+settle is that no further internal measurement is bought on the current corpus. What this review
+settles is that internal measurement was never going to answer the production question, and the
+next measurement, if any, is the ablation.
+
 ### The runs now record which model answered them (2026-09-14)
 
 The saturation finding named four candidate causes and could only rank them by cost, because the
@@ -2116,6 +2169,11 @@ case 3 previously could not have failed. **Case 12 has now failed for real**, on
 population, leaking S4 — and **case 13 passes**, drift=0, on a fixture that can now actually
 show drift. Read both sections above before touching cases 15 or 17. The `nviol()` defect found
 alongside them made case 15's success condition unreportable until 2026-09-03.
+
+**An outside review (2026-09-15) found the design NOT DEFENSIBLE as a replacement for a single
+Opus session**: zero of sixteen claimed benefits are measured against that baseline, no
+end-to-end run is recorded, and no cost figure exists. `evals/2026-09-15-defensibility-review.md`.
+The with/without ablation (Arm A) is the measurement that would change it.
 
 **navi and the plan gate remain CUT and DEFERRED.** The CLI now permits their A/Bs, but
 permitting is not measuring, and the issue's decision rule turns on the measurement.

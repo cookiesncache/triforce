@@ -1,8 +1,10 @@
 # Criteria — sourcing, confirmation, freezing
 
 **The orchestrator must not author the criteria.** An auditee that writes its own exam sets its
-own blocking budget in both directions, and the bound `|blocking| <= |criteria|` collapses. This
-is the single most load-bearing rule in the audit design.
+own blocking budget in both directions, and the bound — the set of criteria a blocking finding
+can NAME is closed — collapses. This is the single most load-bearing rule in the audit design.
+(The bound is on criteria named, not on citation count: `gate.sh` keeps every SAFETY citation and
+up to the finding cap of the rest, and does not deduplicate by criterion.)
 
 ## Where each kind comes from
 
