@@ -522,6 +522,39 @@ All four are locked in by seven offline checks in `run.sh`, two of which **lift 
 out of `live-cases.sh` and run them** rather than grepping for their presence — a filter that
 exists but does not filter is the same false green as no filter at all.
 
+### Case 12, trial 3 — the protocol, declared BEFORE the run (2026-09-15)
+
+Two trials so far, both FAIL, both leaking S4: 2026-09-03 by id, 2026-09-06 by id and span
+(a relabel — round 1 had already cited the purge line as C1 and S2). Neither trial's JSON survived,
+so the relabel reading rests on one printout. Case 13's trial 3, the first with readable sets,
+showed the reviewer folding S4 into S2 on that same purge line in both of its rounds. That makes
+the label on the purge span the thing to watch, and it is what this trial is bought to read.
+
+**What one trial measures.** `new = |blocking(round 1') \ blocking(round 1)|` on the unchanged
+seeded diff, exactly as the harness computes it. Both rounds audit base → seeded (C1, S2, S4 live).
+
+**Outcomes, fixed now.** One trial, run once, whatever it says. No re-roll.
+
+- `new = 0`, round 1 non-empty → a PASS, the first. Recorded as **1 pass in 3 trials**. It retires
+  neither FAIL: the property is stability, and a set that was unstable twice and stable once is
+  unstable. It would say only that the relabel does not happen every time.
+- `new > 0` → a **FAIL**, the third. Its character is the harness's own span comparison, and the
+  kept JSON is then read to confirm it rather than trust the printout:
+  - **relabel** — the leaked id sits on a span round 1 cited under another id. Expected shape,
+    given 09-06 and case 13's trial 3: S4 or S2 on the purge line, or C1 moving between the
+    purge line and the guard line.
+  - **new citation** — the leaked id sits on a span round 1 never cited. That is the schema leak
+    the case was written to catch, and it has not been seen yet.
+- round 1 empty → **UNMEASURED**, INVARIANT 10, counted as neither.
+
+**Prediction, on record.** The purge line will carry one or two labels drawn from {S2, S4} in each
+round, and if the draws differ the trial FAILS as a relabel. This is the third trial and the first
+whose sets can be read; it is characterisation, and n=3 bounds nothing.
+
+**What is retained.** `acceptance/evidence/case12/2026-09-15-trial3/`: `r1.json`, `r1b.json`,
+their `.raw.json`, `blk-*.txt`, `all-*.txt`, `sp*.txt` when the FAIL branch writes them,
+`diff.txt`, `criteria.tsv`, `models.txt`. Committed.
+
 ### The re-run happened. Case 12 FAILS, and this result is real
 
 ```
