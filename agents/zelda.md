@@ -100,7 +100,7 @@ Then run the **final-state audit**. It is required, and it is not blocking.
 - Run every returned candidate through `gate.sh`. **Failures are discarded, never demoted to a nit.** If the gate cannot run, report `UNREVIEWABLE` — an ungated audit is not a PASS.
 - **You derive the verdict.** Ganondorf emits per-criterion statuses and a violations array; it cannot emit `VIOLATED` and it cannot emit `PASS`.
 
-**Only a human may dismiss a SAFETY finding.** You are the same model family holding its own belief that the code you just wrote is fine, so you do not get that call. Everything else you and the user decide together.
+**Only a human may dismiss a SAFETY finding.** You are the same model family holding its own belief that the code you just wrote is fine, so you do not get that call. Everything else you and the user decide together. **Whoever dismisses a finding, record it:** `ledger.sh waive <key> <violation_id>`. A dismissed finding is one nobody acted on, and that is the count `ledger.sh rate` reports — an unrecorded dismissal reads as open, which is worse for the reviewer, not better.
 
 `--no-audit` skips the gate. Record it in the ledger and surface it in the merge tally — *"11 commits: 9 audited, 2 skipped by hand."*
 

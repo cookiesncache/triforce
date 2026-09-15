@@ -172,7 +172,7 @@ Everything below is either a number or an honest blank. Nothing deferred is repo
 Installs from the pinned SHA and loads with its full inventory — 6 agents, 2 skills, 1 hook —
 at a projected **~694 tokens always-on**, recorded here as the baseline for future comparison.
 
-`bash acceptance/run.sh` — **237 checks green**:
+`bash acceptance/run.sh` — **255 checks green**:
 
 | Suite | Checks | Covers |
 |---|---|---|
@@ -201,10 +201,10 @@ an answer.
 
 | | Status |
 |---|---|
-| navi A/B, plan-gate four-arm A/B | **NOT RUN.** Both seats stay empty until they are. See [`evals/README.md`](evals/README.md). |
-| Case 17 arm (d) — a round that may **withdraw** a finding | **BUILT AND EXERCISED, RESULT WITHDRAWN.** It ran, and it did the one thing (b) and (c) cannot: it removed findings. But it removed a correct one along with an invented one, and the host it ran on is disqualified, so the numbers say nothing yet. |
-| Case 17 on django — does the **sequential** arm beat one round? | **HOST-DEPENDENT: 3 wins of 5 informative runs, across 2 verified hosts.** It won every run on the smaller host and no run on the noisier one, where the swing criterion was invisible to every arm. `FP=0` throughout, so where it won it won on recall, not invention. The effect rides entirely on the hardest of four seeded defects. |
-| Case 16 — effective false positives over rolling windows | **NOT RUN.** Needs production audits to accumulate. |
+| navi A/B, plan-gate four-arm A/B | **NOT RUN — deferred by decision (2026-09-15):** settle production with three agents first. Both seats stay empty until their A/Bs run. See [`evals/README.md`](evals/README.md). |
+| Case 17 arm (d) — a round that may **withdraw** a finding | **STRUCTURALLY STUCK.** On two verified hosts it withdrew nothing in 6 of 7 runs, and the once it acted it withdrew a true positive. Its only mechanism is removing a false positive, and hosts clean enough to score produce none. |
+| Case 17 on django — does the **sequential** arm beat one round? | **UNDER-POWERED LEAD, NOT SHIPPED (decision 2026-09-15).** 5 wins, 1 loss, 2 ties over 13 runs on 2 verified hosts; paired on the one swing defect, p ≈ 0.11, and every win precedes run I — after it both arms found everything. `FP=0` throughout. The corpus saturated (5 ceilings in the last 6) and is closed at 13 runs. |
+| Case 16 — effective false positives over rolling windows | **INSTRUMENTED, NOT RUN.** `ledger.sh rate` reads the last 10 audits' dispositions (`resolve` / `waive`, recorded from 2026-09-15). Needs production audits to accumulate; the warn-and-tighten rule is held until a full window exists. |
 | with/without ablation delta | **NOT RECORDED.** |
 
 The three environmental blockers that gated all of this — no authenticated `claude -p`,

@@ -22,11 +22,19 @@
 #   ledger.sh bump <key> <counter>            monotone +1, refuses over cap
 #   ledger.sh seen-has <key> <violation_id>   exit 0 if already seen
 #   ledger.sh seen-add <key> <violation_id>
-#   ledger.sh waive    <key> <violation_id>
+#   ledger.sh waive    <key> <violation_id>   a human dismissed it: NOT acted on
+#   ledger.sh resolve  <key> <violation_id>   verify() returned RESOLVED: acted on
 #   ledger.sh persist  <key> <file>           store the exact audited bytes
 #   ledger.sh show <key>
+#   ledger.sh rate [window]                   effective-false-positive rate over
+#                                             the last <window> audits (default 10)
 #
 # Counters: invocations_used, reaudits_used, verify_used, grant_used.
+#
+# Dispositions: seen_keys is every finding ever cited under this key; resolved
+# and waived are the two dispositions a finding can reach, each append-only and
+# idempotent. A finding in neither is OPEN. `rate` reads all three across
+# ledgers, and it is the only reader that crosses ledgers.
 #
 # No jq dependency: this script is the only writer of these files, so the JSON
 # shape is fixed at one scalar per line and read back with sed.
@@ -66,14 +74,17 @@ get_field() {
 write_ledger() {
   # write_ledger <path> <key> <tier> <audited_sha> <criteria_hash> <inv> <re> <ver> <grant>
   local p="$1" key="$2" tier="$3" sha="$4" ch="$5" inv="$6" re="$7" ver="$8" grant="$9"
-  local seen waived unres
+  local seen waived unres resolved
   seen=$(sed -n 's/^  "seen_keys": \(.*\)$/\1/p' "$p" 2>/dev/null | head -1)
   waived=$(sed -n 's/^  "waived": \(.*\)$/\1/p' "$p" 2>/dev/null | head -1)
   unres=$(sed -n 's/^  "unresolved": \(.*\)$/\1/p' "$p" 2>/dev/null | head -1)
-  [ -n "$seen" ]   || seen='[],'
-  [ -n "$waived" ] || waived='[]'
-  [ -n "$unres" ]  || unres='[]'
+  resolved=$(sed -n 's/^  "resolved": \(.*\)$/\1/p' "$p" 2>/dev/null | head -1)
+  [ -n "$seen" ]     || seen='[],'
+  [ -n "$waived" ]   || waived='[]'
+  [ -n "$unres" ]    || unres='[]'
+  [ -n "$resolved" ] || resolved='[]'
   unres="${unres%,},"          # normalise to exactly one trailing comma
+  resolved="${resolved%,},"
   {
     echo '{'
     echo "  \"key\": \"$key\","
@@ -86,6 +97,7 @@ write_ledger() {
     echo "  \"grant_used\": $grant,"
     echo "  \"unresolved\": $unres"
     echo "  \"seen_keys\": $seen"
+    echo "  \"resolved\": $resolved"
     echo "  \"waived\": $waived"
     echo '}'
   } > "$p.tmp" && mv "$p.tmp" "$p"
@@ -121,7 +133,7 @@ case "$CMD" in
       echo "ledger: key $key already exists; counters preserved" >&2
       exit 0
     fi
-    printf '{\n  "unresolved": [],\n  "seen_keys": [],\n  "waived": []\n}\n' > "$p"
+    printf '{\n  "unresolved": [],\n  "seen_keys": [],\n  "resolved": [],\n  "waived": []\n}\n' > "$p"
     write_ledger "$p" "$key" "$tier" "$sha" "$ch" 0 0 0 0
     echo "$p"
     ;;
@@ -255,12 +267,93 @@ case "$CMD" in
     ;;
 
   waive)
+    # A human dismissed the finding: it was NOT acted on. Idempotent -- a
+    # disposition recorded twice must count once, or `rate` inflates.
     [ $# -eq 2 ] || die "usage: waive <key> <violation_id>"
     p="$(require_ledger "$1")" || exit 2
     cur=$(sed -n 's/^  "waived": \(.*\)$/\1/p' "$p" | head -1)
     [ -n "$cur" ] || cur="[]"
+    printf '%s' "$cur" | grep -q "\"$2\"" && exit 0
     if [ "$cur" = "[]" ]; then new="[\"$2\"]"; else new="${cur%]}, \"$2\"]"; fi
     sed -i "s|^  \"waived\": .*$|  \"waived\": $new|" "$p"
+    ;;
+
+  resolve)
+    # verify() returned RESOLVED: the finding was acted on. This is the other
+    # half of the disposition that "effective false positives" needs -- a true
+    # finding nobody acted on is a false positive, and until this existed the
+    # ledger recorded the citation and the dismissal but never the fix.
+    # Append-only and idempotent, like waive. The line sits before "waived" so
+    # the last line of the file stays comma-free and older ledgers, which lack
+    # it, get it inserted rather than rewritten.
+    [ $# -eq 2 ] || die "usage: resolve <key> <violation_id>"
+    p="$(require_ledger "$1")" || exit 2
+    cur=$(sed -n 's/^  "resolved": \(.*\)$/\1/p' "$p" | head -1)
+    cur="${cur%,}"
+    [ -n "$cur" ] || cur="[]"
+    printf '%s' "$cur" | grep -q "\"$2\"" && exit 0
+    if [ "$cur" = "[]" ]; then new="[\"$2\"]"; else new="${cur%]}, \"$2\"]"; fi
+    if grep -q '^  "resolved":' "$p"; then
+      sed -i "s|^  \"resolved\": .*$|  \"resolved\": $new,|" "$p"
+    else
+      sed -i "s|^  \"waived\":|  \"resolved\": $new,\n  \"waived\":|" "$p"
+    fi
+    ;;
+
+  rate)
+    # EFFECTIVE FALSE POSITIVES, read and never acted on.
+    #
+    # preflight.md: "a true finding nobody acted on is a false positive", over
+    # rolling windows of 10 audits; warn at 5%, tighten above 10%. This command
+    # is the READER. It walks the last <window> ledgers -- one ledger is one
+    # audit -- and reports the dispositions. It changes nothing, tightens
+    # nothing and warns about nothing: the 5% / 10% behaviour is HELD until a
+    # full window of production data exists to design it against (author
+    # decision 4, 2026-09-15). The thresholds are printed as reference only.
+    #
+    # Two rates, because the ledger cannot tell an ignored finding from one
+    # still in progress:
+    #   lower  = waived / cited            findings a human dismissed
+    #   upper  = (waived + open) / cited   ...plus every finding never dispositioned
+    # The true not-useful rate lies between them. Neither is printed when
+    # nothing was cited: 0 of 0 is not a rate, it is an absence of data.
+    #
+    # Recency is file mtime -- the ledger carries no timestamp, and mtime is
+    # the last write, which is the last time the audit was touched.
+    n="${1:-10}"
+    case "$n" in ''|*[!0-9]*|0) die "usage: rate [window >= 1]" ;; esac
+    [ -d "$LEDGER_DIR" ] || { echo "rate: no ledgers under $LEDGER_DIR; nothing has been audited here."; exit 0; }
+    files=$(ls -t "$LEDGER_DIR"/*.json 2>/dev/null | head -n "$n")
+    [ -n "$files" ] || { echo "rate: no ledgers under $LEDGER_DIR; nothing has been audited here."; exit 0; }
+    audits=0; cited=0; resolved=0; waived=0; escalated=0
+    count_ids() { printf '%s' "$1" | grep -o '"[^"]*"' | grep -c . 2>/dev/null || true; }
+    for f in $files; do
+      audits=$((audits + 1))
+      s=$(sed -n 's/^  "seen_keys": \(.*\)$/\1/p' "$f" | head -1)
+      r=$(sed -n 's/^  "resolved": \(.*\)$/\1/p' "$f" | head -1)
+      w=$(sed -n 's/^  "waived": \(.*\)$/\1/p' "$f" | head -1)
+      u=$(sed -n 's/^  "unresolved": \(.*\)$/\1/p' "$f" | head -1)
+      cited=$((cited + $(count_ids "$s")))
+      resolved=$((resolved + $(count_ids "$r")))
+      waived=$((waived + $(count_ids "$w")))
+      escalated=$((escalated + $(printf '%s' "$u" | grep -o '"[^"]*:[0-9]*"' | grep -cE ':([3-9]|[1-9][0-9]+)"$' 2>/dev/null || true)))
+    done
+    open=$((cited - resolved - waived)); [ "$open" -lt 0 ] && open=0
+    echo "audits     $audits of a $n-audit window$([ "$audits" -lt "$n" ] && printf ' (PARTIAL: fewer than %s ledgers exist)' "$n")"
+    echo "cited      $cited"
+    echo "resolved   $resolved     acted on (verify returned RESOLVED)"
+    echo "waived     $waived     dismissed by a human: not acted on"
+    echo "open       $open     no disposition recorded"
+    echo "escalated  $escalated     UNRESOLVED three times; a human decides"
+    if [ "$cited" -eq 0 ]; then
+      echo "rate       UNDEFINED: nothing was cited in this window, so there is no rate to report."
+    else
+      lo=$(awk -v w="$waived" -v c="$cited" 'BEGIN{printf "%.1f", 100*w/c}')
+      hi=$(awk -v w="$waived" -v o="$open" -v c="$cited" 'BEGIN{printf "%.1f", 100*(w+o)/c}')
+      echo "rate       not-useful $lo% (waived only) .. $hi% (waived + open)"
+      echo "reference  preflight.md warns at 5% and tightens above 10%. NOT WIRED: this command"
+      echo "           reports and does nothing else. See HANDOFF, author decision 4."
+    fi
     ;;
 
   persist)

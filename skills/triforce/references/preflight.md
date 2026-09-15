@@ -84,3 +84,9 @@ preflight card. This is a direct port of Tricorder's disable action, whose polic
 exceeding a 10% not-useful rate get turned off.
 
 That definition is the point: it removes the reviewer's "but it was technically true" defence.
+
+**Status (2026-09-15):** the reader exists — `ledger.sh rate` reports the rate over the last 10
+audits from the dispositions the ledger now records (`resolve`, `waive`). **The warn-at-5% and
+tighten-above-10% behaviour is NOT wired**, by author decision: "tighten the confidence bar" is
+undefined until a full window of production data exists to define it against. `rate` prints the
+thresholds as reference and takes no action.

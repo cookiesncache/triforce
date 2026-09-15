@@ -197,6 +197,97 @@ if command -v python >/dev/null 2>&1; then
   fi
 fi
 
+# --- dispositions: resolve and waive are append-only, idempotent, preserved --
+# Case 16 (effective false positives) reads these. A disposition recorded twice
+# must count once, and a counter write must not drop it.
+KD=$(bash "$L" key d tree crit)
+bash "$L" init "$KD" 2 sha crit >/dev/null
+D1=$(bash "$L" vid C1 "d span 1"); D2=$(bash "$L" vid S2 "d span 2"); D3=$(bash "$L" vid S4 "d span 3")
+bash "$L" seen-add "$KD" "$D1"; bash "$L" seen-add "$KD" "$D2"; bash "$L" seen-add "$KD" "$D3"
+bash "$L" resolve "$KD" "$D1"; bash "$L" resolve "$KD" "$D1"
+bash "$L" waive   "$KD" "$D2"; bash "$L" waive   "$KD" "$D2"
+nres=$(sed -n 's/^  "resolved": \(.*\)$/\1/p' "$TRIFORCE_LEDGER_DIR/$KD.json" | grep -o '"[^"]*"' | grep -c .)
+nwai=$(sed -n 's/^  "waived": \(.*\)$/\1/p'   "$TRIFORCE_LEDGER_DIR/$KD.json" | grep -o '"[^"]*"' | grep -c .)
+check "resolve twice records one disposition" "$nres" "1"
+check "waive twice records one disposition"   "$nwai" "1"
+bash "$L" bump "$KD" verify_used >/dev/null 2>&1
+nres2=$(sed -n 's/^  "resolved": \(.*\)$/\1/p' "$TRIFORCE_LEDGER_DIR/$KD.json" | grep -o '"[^"]*"' | grep -c .)
+check "resolved survives a counter write" "$nres2" "1"
+if command -v python >/dev/null 2>&1; then
+  if python -c "import json,sys; json.load(open(sys.argv[1]))" "$TRIFORCE_LEDGER_DIR/$KD.json" 2>/dev/null; then
+    ok "ledger stays valid JSON after resolve and waive"
+  else
+    bad "ledger stays valid JSON after resolve and waive"; cat "$TRIFORCE_LEDGER_DIR/$KD.json"
+  fi
+fi
+# a ledger written before "resolved" existed gets the line inserted, not a rewrite
+KO=$(bash "$L" key o tree crit)
+bash "$L" init "$KO" 2 sha crit >/dev/null
+sed -i '/"resolved":/d' "$TRIFORCE_LEDGER_DIR/$KO.json"
+O1=$(bash "$L" vid C1 "old span"); bash "$L" seen-add "$KO" "$O1"; bash "$L" resolve "$KO" "$O1"
+if grep -q "^  \"resolved\": \[\"$O1\"\],$" "$TRIFORCE_LEDGER_DIR/$KO.json" \
+   && python -c "import json,sys; json.load(open(sys.argv[1]))" "$TRIFORCE_LEDGER_DIR/$KO.json" 2>/dev/null; then
+  ok "a pre-disposition ledger gains the resolved line in place and stays valid JSON"
+else
+  bad "a pre-disposition ledger is not upgraded cleanly"; cat "$TRIFORCE_LEDGER_DIR/$KO.json"
+fi
+
+# --- rate: the case 16 reader ------------------------------------------------
+# Its own directory, so the counts are exactly the fixture's. Three ledgers:
+#   R1  3 cited, 1 resolved, 1 waived, 1 open, one violation escalated
+#   R2  2 cited, 2 resolved
+#   R3  0 cited                      (newest)
+# Window 10 sees all three: cited 5, resolved 3, waived 1, open 1 -> 20% .. 40%.
+# Window 1 sees only R3: nothing cited, so the rate must be UNDEFINED, not 0%.
+RD="$WORK/ratedir"; mkdir -p "$RD"
+export TRIFORCE_LEDGER_DIR="$RD"
+R1=$(bash "$L" key r1 tree crit); bash "$L" init "$R1" 2 sha crit >/dev/null
+A1=$(bash "$L" vid C1 "r1 a"); A2=$(bash "$L" vid S2 "r1 b"); A3=$(bash "$L" vid S4 "r1 c")
+bash "$L" seen-add "$R1" "$A1"; bash "$L" seen-add "$R1" "$A2"; bash "$L" seen-add "$R1" "$A3"
+bash "$L" resolve "$R1" "$A1"; bash "$L" waive "$R1" "$A2"
+bash "$L" unresolved-bump "$R1" "$A3" >/dev/null 2>&1; bash "$L" unresolved-bump "$R1" "$A3" >/dev/null 2>&1; bash "$L" unresolved-bump "$R1" "$A3" >/dev/null 2>&1
+sleep 1
+R2=$(bash "$L" key r2 tree crit); bash "$L" init "$R2" 2 sha crit >/dev/null
+B1=$(bash "$L" vid C1 "r2 a"); B2=$(bash "$L" vid S2 "r2 b")
+bash "$L" seen-add "$R2" "$B1"; bash "$L" seen-add "$R2" "$B2"; bash "$L" resolve "$R2" "$B1"; bash "$L" resolve "$R2" "$B2"
+sleep 1
+R3=$(bash "$L" key r3 tree crit); bash "$L" init "$R3" 2 sha crit >/dev/null
+before=$(cat "$RD"/*.json | sha1sum)
+out=$(bash "$L" rate)
+after=$(cat "$RD"/*.json | sha1sum)
+check "rate: audits in window"  "$(printf '%s\n' "$out" | awk '/^audits/{print $2}')"    "3"
+check "rate: cited"             "$(printf '%s\n' "$out" | awk '/^cited/{print $2}')"     "5"
+check "rate: resolved"          "$(printf '%s\n' "$out" | awk '/^resolved/{print $2}')"  "3"
+check "rate: waived"            "$(printf '%s\n' "$out" | awk '/^waived/{print $2}')"    "1"
+check "rate: open"              "$(printf '%s\n' "$out" | awk '/^open/{print $2}')"      "1"
+check "rate: escalated"         "$(printf '%s\n' "$out" | awk '/^escalated/{print $2}')" "1"
+if printf '%s' "$out" | grep -qF 'not-useful 20.0% (waived only) .. 40.0% (waived + open)'; then
+  ok "rate: lower bound is waived/cited, upper bound adds open"
+else
+  bad "rate: bounds wrong"; printf '%s\n' "$out"
+fi
+if printf '%s' "$out" | grep -qF 'PARTIAL' && printf '%s' "$out" | grep -qF 'NOT WIRED'; then
+  ok "rate: says the window is partial and that the 5%/10% rule is not wired"
+else
+  bad "rate: silent about a partial window or about not acting"
+fi
+[ "$before" = "$after" ] && ok "rate reads and writes nothing" || bad "rate modified a ledger"
+out1=$(bash "$L" rate 1)
+if printf '%s' "$out1" | grep -qF 'rate       UNDEFINED' && ! printf '%s' "$out1" | grep -q '%'; then
+  ok "rate: a window with nothing cited is UNDEFINED, never 0%"
+else
+  bad "rate: printed a percentage over zero citations"; printf '%s\n' "$out1"
+fi
+check "rate: window 1 is the NEWEST ledger (mtime order)" "$(printf '%s\n' "$out1" | awk '/^cited/{print $2}')" "0"
+if TRIFORCE_LEDGER_DIR="$WORK/no-such-dir" bash "$L" rate | grep -qF 'nothing has been audited here'; then
+  ok "rate: no ledger directory is reported as no data, not as a clean rate"
+else
+  bad "rate: an absent ledger directory was read as something"
+fi
+bash "$L" rate 0 >/dev/null 2>&1 && bad "rate 0 accepted" || ok "rate refuses a zero window"
+export TRIFORCE_LEDGER_DIR="$WORK/.triforce/ledger"
+
+
 echo
 echo "  $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

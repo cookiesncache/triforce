@@ -57,9 +57,17 @@ large to audit at this tier; split it" — rather than a partial review wearing 
   "verify_used": 0,
   "grant_used": 0,
   "seen_keys": [],
+  "resolved": [],
   "waived": []
 }
 ```
+
+`seen_keys` is every finding ever cited under this key. `resolved` and `waived` are the two
+dispositions a finding can reach — `verify()` returning `RESOLVED` writes the first, a human
+dismissing writes the second — and both are append-only and idempotent. A finding in neither is
+**open**. `ledger.sh rate [window]` reads all three across the last `window` ledgers (default 10,
+one ledger per audit, newest by mtime) and reports the effective-false-positive rate as a range:
+waived / cited as the floor, (waived + open) / cited as the ceiling. It reads and never writes.
 
 All four counters are **monotone**. `ledger.sh` refuses any write that would decrease one: it exits
 non-zero and changes nothing on disk. This is enforced, not assumed, and it is half of acceptance

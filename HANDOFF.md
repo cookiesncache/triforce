@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 237 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 255 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -174,8 +174,9 @@ Then, still to be **built**, not just run:
 2. **The plan gate's four arms** — (i) in-context self-critique, (ii) fresh zelda subagent,
    (iii) fresh + ganondorf, (iv) fresh + ganondorf as a **delete-only refuter**.
 3. **Setup-from-a-clean-machine** verification, following only the README.
-4. **Case 16**, effective false positives over rolling windows — genuinely cannot be done yet; it
-   needs production audits to accumulate.
+4. **Case 16**, effective false positives over rolling windows — INSTRUMENTED 2026-09-15
+   (`ledger.sh rate`, dispositions recorded by `resolve` / `waive`); needs production audits to
+   accumulate. The warn/tighten rule is held — decision 4.
 
 ### Case 11 re-measured on the fixed transport — 2026-09-06
 
@@ -1859,6 +1860,28 @@ production with 3 agents first."** Neither seat is waived and neither A/B is fun
 production experience with the three-agent roster. A cold session must not build either, and must
 not read "deferred" as "forgotten" — it was decided on 2026-09-15 with the numbers in front of it.
 
+**4. Case 16 is INSTRUMENTED; the warn/tighten rule is HELD.** "Needs production audits to
+accumulate" was half true: the ledger recorded every citation and every dismissal but never a fix,
+and nothing read across ledgers, so ten production audits would have left ten files and no number.
+Built 2026-09-15, offline-tested (18 checks in `test-ledger.sh`, the two that matter probed red):
+
+- `ledger.sh resolve <key> <vid>` — `verify()` returning `RESOLVED` now records it. `waive` made
+  idempotent to match, since a disposition counted twice inflates the rate. Older ledgers gain the
+  `resolved` line in place.
+- `commands/verify.md` and `agents/zelda.md` tell production to write both dispositions. Without
+  that the reader would be a green that could not have been red.
+- `ledger.sh rate [window]` — the reader. Last `window` ledgers by mtime (default 10, one ledger per
+  audit): cited, resolved, waived, open, escalated, and the not-useful rate as a RANGE —
+  waived / cited as the floor, (waived + open) / cited as the ceiling, because the ledger cannot
+  tell an ignored finding from one in progress. Nothing cited prints UNDEFINED, never 0%. It reads
+  and writes nothing, and it says so.
+
+**What is deliberately not built:** preflight.md's warn-at-5% / tighten-above-10%. "Tighten the
+confidence bar" is undefined, and defining it before a full window of production data exists would
+be designing a policy against nothing. `rate` prints the thresholds as reference and takes no
+action. The author's call: build the reader now, start production with three agents, design the
+rule once there is a rate to design it against.
+
 ### Two deviations from the issue's literal text, both deliberate
 
 **1. `context: inline` + `agent: zelda`, not `context: fork`.**
@@ -2007,7 +2030,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **237** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **255** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its

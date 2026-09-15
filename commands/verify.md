@@ -67,7 +67,7 @@ Then act on each status, and only these three exist:
 
 | Status | Action |
 |---|---|
-| `RESOLVED` | Close the violation. This is the expected, common, successful result. |
+| `RESOLVED` | `ledger.sh resolve <key> <violation_id>`, then close the violation. This is the expected, common, successful result. The ledger line is what case 16 reads: a finding with no recorded disposition counts against the reviewer, not for it. |
 | `UNRESOLVED` | `ledger.sh unresolved-bump <key> <violation_id>`. At the third, that command exits non-zero and **a human decides** — do not dispatch a fourth check. |
 | `RELOCATION_FAILED` | **Explicitly not `RESOLVED`.** A violation that moved must never be reported fixed. Escalate. |
 
