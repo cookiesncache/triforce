@@ -142,14 +142,16 @@ bash acceptance/live-cases.sh --case 15   # PASSED — 2026-09-06, n=4, on a REA
                                          #   pre-gate == post-gate every time, so THE GATE DOES
                                          #   NOT REMOVE THEM. Cause A confirmed. The earlier
                                          #   "inconclusive" was an untreated arm; see below.
-bash acceptance/live-cases.sh --case 17   # SPLIT VERDICT — 2026-09-14, 12 runs on 2 hosts
+bash acceptance/live-cases.sh --case 17   # SPLIT VERDICT — 2026-09-14, 13 runs on 2 hosts
                                          #   verified CLEAN on the exact diff they audit.
                                          #   The issue's LITERAL clause HOLDS: arm (b), a forced
                                          #   INDEPENDENT round, has never beaten one round --
-                                         #   12 runs, 12 ties, 0 wins, on any host, ever.
+                                         #   13 runs, 13 ties, 0 wins, on any host, ever.
                                          #   Arm (c), a CHAINED round at the SAME budget as (a),
                                          #   beats it on BOTH hosts: 5 wins, 2 ties over 7
-                                         #   informative runs (5 ceilings correctly refused).
+                                         #   informative runs (6 ceilings correctly refused,
+                                         #   FIVE of them in the last six runs -- the corpus
+                                         #   has saturated; read that section first).
                                          #   Arm (e) ties (a) at HALF the budget, n=2.
                                          #   Arm (f) SKIPS: no agent declares an effort, so (a)
                                          #   already is the production auditor.
@@ -704,6 +706,51 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### THE CORPUS HAS SATURATED: five of the last six runs were ceilings (2026-09-14)
+
+Run N on `804660d6` is the third consecutive ceiling and the sixth of thirteen. Arm (a) took all
+four seeds including `S4` — the seed this file has called "the marginal one by construction",
+"found by (c) ONLY" in four separate runs. Split the table chronologically and the change is not
+subtle:
+
+```
+runs 1 C D E F G H   (through 2026-09-09)   1 ceiling in 7    — S4 was reached by (c) and almost nothing else
+runs I J K L M N     (2026-09-09 .. 09-14)  5 ceilings in 6   — (a) now reaches S4 on its own, routinely
+```
+
+**What this is not.** It is not the effort change. Every audit this harness has ever run went
+through `claude -p --agent`, which took the model default before the key was removed and takes it
+after; run M and run N are byte-for-byte the same configuration as run K, which was informative.
+Nothing in the removal touched the harness path, and a reader finding this section later should not
+attribute the shift to it. It is also not the fingerprint guard, which gates which hosts may be
+scored and changes no prompt.
+
+**What it might be, in the order a next session should test them.** (1) `S4` is not as marginal as
+the corpus design assumed, and the four early "found by (c) ONLY" runs were the tail rather than the
+rule — the cheapest check, since it needs no new corpus, only the existing per-arm citations
+re-read. (2) The model moved under us across the eight days these runs span; the harness pins no
+model version and nothing here records one per run, which is a gap worth closing before the next
+batch. (3) Sampling: 1-in-7 and 5-in-6 are small numbers, and the difference is suggestive rather
+than established.
+
+**What it costs, which is the part that matters now.** A ceiling run buys one tie for arm (b) and
+nothing at all for (c), (d) or (e) — the three arms with open questions. At the recent rate each
+further run on this corpus has better than even odds of yielding nothing for them, so **buying more
+runs against this corpus is poor value and the harness's own advice applies: harden it first.** The
+UNINFORMATIVE verdict has said "Harden the corpus before reading anything into (a) >= (b)" since it
+was written; this is the first time the numbers make that the binding constraint rather than a
+caution.
+
+**The constraint on hardening: it is not free.** Changing the seeds changes the truth set, and
+thirteen runs of tallies are comparable only within one truth set. A harder corpus starts arm (c)'s
+count at zero rather than continuing 5 wins in 7, and that is the honest price, not a reason to
+avoid it. An added FIFTH marginal seed rather than an altered `S4` would at least keep the existing
+four scoreable, but it is still a different truth set and this file must not pool the two.
+
+**Recorded, not acted on.** Hardening the corpus is a design change to the instrument, and the
+standing rule here is that a measurement's instrument does not change to make a result appear.
+The next session decides; the numbers above are what it decides on.
+
 ### Run M: the first run with no effort declared, and arm (f) skipped as designed (2026-09-14)
 
 The first case-17 run since `effort: medium` came out of the agent files. **A CEILING, refused** —
@@ -996,14 +1043,17 @@ host       run  noise      (a)     (b)     (c)     (d)     (e)     what happened
 0f581cd2   K    375 ln     0.857   0.857   1.000   0.857   0.857   found by (c) ONLY -- on the 'blind spot' host
 0f581cd2   L    375 ln     1.000   1.000   1.000   0.857   0.857   found by (a) -- CEILING, refused. (d) WITHDREW S2, a true positive
 0f581cd2   M    375 ln     1.000   1.000   1.000   1.000   1.000   found by EVERY arm -- CEILING, refused. (f) SKIPPED: no effort declared
+804660d6   N    253 ln     1.000   1.000   1.000   1.000   1.000   found by EVERY arm -- CEILING, refused. Third in a row
 ```
 
 **Tally, counting only runs where the comparison had power:**
 
 ```
-(b) vs (a)   12 runs, 12 TIES, 0 wins. Arm (b) has never beaten one round on any host, ever.
+(b) vs (a)   13 runs, 13 TIES, 0 wins. Arm (b) has never beaten one round on any host, ever.
 (c) vs (a)   7 informative runs: 5 WINS, 2 ties, and it has now won on BOTH hosts. (Runs C, I,
-             J, L and M excluded -- (a) at ceiling, so (c) could not win.)
+             J, L, M and N excluded -- (a) at ceiling, so (c) could not win. That is SIX
+             refused runs of thirteen, five of them in the last six: see the saturation
+             section. The 7 informative runs are not getting cheaper.)
 (f) vs (a)   NOT APPLICABLE since 2026-09-14: no agent declares an effort, so (a) IS the
              production auditor and the arm SKIPS. It stays built for the day one is pinned.
 (e) vs (a)   2 informative runs: 2 TIES, on HALF the budget, on two different hosts. The
@@ -1654,9 +1704,9 @@ negative, and a smaller one than "the schema is leaking" — not an open item.
 pre-gate == post-gate in every run, so the gate does NOT remove floor-induced false positives.
 Removing the floor is the only defence, not one of two. (The "inconclusive" this block used to
 report was an untreated arm and is superseded — see the n=4 section above.)
-**The one-round premise ⚠️ MEASURED, and the verdict is SPLIT.** 12 runs across 2 hosts verified
+**The one-round premise ⚠️ MEASURED, and the verdict is SPLIT.** 13 runs across 2 hosts verified
 CLEAN on the exact diff they audit. The issue's literal clause — a forced second INDEPENDENT
-round — **HOLDS: arm (b) has never beaten one round, 12 of 12, on any host.** A CHAINED second
+round — **HOLDS: arm (b) has never beaten one round, 13 of 13, on any host.** A CHAINED second
 round at the same audit budget **does** beat it, on **both** hosts: 5 wins, 2 ties over 7
 informative runs. So "one round is enough" is defended exactly as specified and falsified as a
 general claim. That is a decision for the author, not a measurement gap — the corpus stopped
