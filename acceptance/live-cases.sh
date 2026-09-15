@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # live-cases.sh — Tier-2 acceptance cases 12, 13, 15 and 17.
 #
-#   bash acceptance/live-cases.sh [--case 12|13|15|17] [--repo <path>]
+#   bash acceptance/live-cases.sh [--case 12|13|15|17] [--repo <path>] [--keep <dir>]
 #
 # All four need a live model. They gate on an auth probe and report UNMEASURED
 # rather than skipping quietly, because a case that did not run must never be
@@ -57,6 +57,17 @@ DJ_HOST=""
 # audit(), the same criteria file and the same tier.
 VERIFY_HOST=0
 RUNS=3
+# --keep <dir>: retain the run's evidence instead of discarding it with $WORK.
+#
+# Every round's gated JSON, its pre-gate array, the blocking lists, the exact
+# diffs audited, the arm outputs and models.txt are top-level files in $WORK,
+# and the trap removed them all. So case 12's leak could only be characterised
+# by hypothesis, case 13's n=1 cannot say which criterion a drift would have
+# landed on, and case 17 prints FP ids without the citation text they stand
+# for. Opt-in, so a default run leaves nothing behind. Files only: the fixture
+# repos under $WORK are rebuilt from this script and the corpus, and the diffs
+# they produced are among the files kept.
+KEEP=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -73,6 +84,7 @@ while [ $# -gt 0 ]; do
     --host) DJ_HOST="$2"; shift 2 ;;
     --verify-host) VERIFY_HOST=1; shift ;;
     --runs) RUNS="$2"; shift 2 ;;
+    --keep) KEEP="$2"; shift 2 ;;
     *) echo "live-cases: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -95,8 +107,36 @@ if [ "$VERIFY_HOST" = 1 ] && [ "$CORPUS" != "django" ]; then
   exit 2
 fi
 
+# A KEEP DIRECTORY MUST BE EMPTY OR ABSENT. Two runs kept into one directory
+# would merge -- run 2's s1.json overwriting run 1's, run 1's arm-c.txt
+# surviving beside run 2's arm-a.txt -- and read as a single run that never
+# happened. Refused here, before the auth probe, so a bad --keep costs nothing.
+if [ -n "$KEEP" ]; then
+  if [ -e "$KEEP" ] && [ ! -d "$KEEP" ]; then
+    echo "live-cases: --keep '$KEEP' exists and is not a directory." >&2
+    exit 2
+  fi
+  if [ -d "$KEEP" ] && [ -n "$(ls -A "$KEEP" 2>/dev/null)" ]; then
+    echo "live-cases: --keep '$KEEP' is not empty. Two runs kept into one directory" >&2
+    echo "would merge into evidence of a run that never happened. Name a fresh one." >&2
+    exit 2
+  fi
+fi
+
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+# keep_work runs from the EXIT trap. It never alters the script's exit status:
+# a failed copy is reported, $WORK is left in place so the evidence can be
+# recovered by hand, and the status the script was exiting with stands.
+keep_work() {
+  [ -n "$KEEP" ] || return 0
+  if mkdir -p "$KEEP" && find "$WORK" -maxdepth 1 -type f -exec cp {} "$KEEP"/ \; ; then
+    echo "  kept  $(find "$KEEP" -maxdepth 1 -type f | wc -l | tr -d ' ') file(s) -> $KEEP"
+    return 0
+  fi
+  echo "  KEEP FAILED: could not copy $WORK into $KEEP. \$WORK is left in place." >&2
+  return 1
+}
+trap 'keep_work && rm -rf "$WORK"' EXIT
 
 PASS=0; FAIL=0
 ok()  { printf '  ok    %s\n' "$1"; PASS=$((PASS+1)); }

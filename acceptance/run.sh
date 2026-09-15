@@ -1366,6 +1366,65 @@ else
     sok "every live-cases probe dies at a guard, before the auth probe (the suite stays offline)"
   fi
 
+  # ---- --keep: the evidence survives the run, and only when asked ---------
+  # Neither case 12 nor 13 could show WHICH criterion leaked or drifted after
+  # the fact, because the trap removed $WORK. --keep retains its top-level
+  # files. Three properties, each probed rather than grepped: a non-empty
+  # target is refused BEFORE the auth probe (two runs must not merge into one
+  # directory's worth of evidence); the trap copies the files and preserves the
+  # script's own exit status; a failed copy is reported and leaves $WORK in
+  # place rather than deleting the only copy.
+  _kd="$(mktemp -d)"; mkdir -p "$_kd/full" "$_kd/empty" "$_kd/out"; echo x > "$_kd/full/old.json"; echo f > "$_kd/afile"
+  _kf="$(bash acceptance/live-cases.sh --keep "$_kd/full"  --case 13 2>&1)"; _kfrc=$?
+  _ka="$(bash acceptance/live-cases.sh --keep "$_kd/afile" --case 13 2>&1)"; _karc=$?
+  _ke="$(bash acceptance/live-cases.sh --keep "$_kd/empty" --verify-host --corpus hard --runs 3 2>&1)"
+  if [ "$_kfrc" = 2 ] && printf '%s' "$_kf" | grep -qF 'is not empty' \
+     && [ "$_karc" = 2 ] && printf '%s' "$_ka" | grep -qF 'is not a directory' \
+     && ! printf '%s%s%s' "$_kf" "$_ka" "$_ke" | grep -qF 'triforce live cases'; then
+    sok "--keep refuses a non-empty target and a file, at a guard, before the auth probe"
+  else
+    sbad "--keep accepts a target that would merge two runs' evidence, or the refusal reaches the model"
+  fi
+
+  # The trap itself, lifted rather than restated. Driven through a real EXIT
+  # trap with a fixture .git beside the files: files kept, the repo not, and
+  # exit 7 still exit 7.
+  sed -n '/^keep_work() {$/,/^}$/p' acceptance/live-cases.sh > "$_kd/fn.sh"
+  _kdrv="$_kd/drive.sh"
+  {
+    echo 'set -uo pipefail'
+    echo '. "$1"'
+    echo 'WORK="$(mktemp -d)"; KEEP="$2"'
+    echo "trap 'keep_work && rm -rf \"\$WORK\"' EXIT"
+    echo 'printf "[{\"criterion_id\":\"S4\"}]" > "$WORK/s1.json"'
+    echo 'mkdir -p "$WORK/fixture/.git"; echo repo > "$WORK/fixture/.git/HEAD"'
+    echo 'echo "$WORK" > "$3"'
+    echo 'exit 7'
+  } > "$_kdrv"
+  if grep -q '^keep_work() {$' "$_kd/fn.sh"; then
+    bash "$_kdrv" "$_kd/fn.sh" "$_kd/out" "$_kd/w1" >/dev/null 2>&1; _krc=$?
+    _kw1="$(cat "$_kd/w1" 2>/dev/null)"
+    if [ "$_krc" = 7 ] && [ -f "$_kd/out/s1.json" ] && [ ! -e "$_kd/out/fixture" ] \
+       && grep -qF '"S4"' "$_kd/out/s1.json" && [ ! -d "$_kw1" ]; then
+      sok "--keep's trap copies the run's files (not its fixture repos), removes WORK, and keeps the exit status"
+    else
+      sbad "--keep's trap lost a file, copied a fixture repo, left WORK behind, or changed the exit status (rc=$_krc)"
+    fi
+    bash "$_kdrv" "$_kd/fn.sh" "" "$_kd/w2" >/dev/null 2>&1
+    _kw2="$(cat "$_kd/w2" 2>/dev/null)"
+    _kbad="$(bash "$_kdrv" "$_kd/fn.sh" "$_kd/afile/sub" "$_kd/w3" 2>&1)"; _kbrc=$?
+    _kw3="$(cat "$_kd/w3" 2>/dev/null)"
+    if [ ! -d "$_kw2" ] && [ "$_kbrc" = 7 ] && printf '%s' "$_kbad" | grep -qF 'KEEP FAILED' && [ -d "$_kw3" ]; then
+      sok "without --keep nothing is retained; a failed copy is reported, leaves WORK in place, and keeps the exit status"
+    else
+      sbad "a failed --keep copy went unreported, deleted the only copy, or altered the exit status (rc=$_kbrc)"
+    fi
+    rm -rf "$_kw3"
+  else
+    sbad "could not lift keep_work from live-cases.sh (its markers moved)"
+  fi
+  rm -rf "$_kd"
+
   # ---- the verdict must be able to see the sequential arm ----------------
   # The falsifier clause names arm (b), and the verdict chain implements it
   # unchanged. But arm (c) only became a real arm on 2026-09-06 -- until then it

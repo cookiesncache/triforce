@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 232 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 235 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -562,6 +562,40 @@ re-run when it happens: the spec
 frames case 12 as a re-run *"on an unchanged diff that returned PASS"*, and the shared fixture
 diff carries seeded defects, so round 1 does not return PASS. The harness is testing the
 stronger property — stability of the finding set on any unchanged diff.
+
+### Case 13, trial 2 — the protocol, declared BEFORE the run (2026-09-15)
+
+The section below ends with two instructions: treat repeat trials as characterisation, and
+declare the protocol before running them. This is that declaration. It is written before the
+run and will not be edited after it; the result goes in its own section beneath.
+
+**What one trial measures.** `drift = |blocking(round 2) \ blocking(round 1)|`, exactly as the
+harness computes it with `comm -13`. Round 1 audits base → seeded (the guard removed, `db.purge`
+added: C1, S2, S4 live). Round 2 audits base → fix (the guard restored, the purge left: S2, S4
+live, C1 repaired). Every changed line in round 2's diff is a changed line in round 1's; `-W`
+context shows the guard as unchanged in round 2, where round 1 showed it deleted.
+
+**Outcomes, fixed now.** One trial, run once, whatever it says. No re-roll.
+
+- `drift = 0`, at least one round non-empty → a second pass. Recorded as **2 of 2**, and still
+  characterisation: two trials bound nothing.
+- `drift > 0` → a **FAIL**, recorded as one. Its **character** is then read from the kept JSON
+  (`--keep`, built today for exactly this), in this order, first match wins:
+  1. **severity flip** — the id is in round 1's all-severity set but not its blocking set;
+  2. **relabel** — round 2's span was cited by round 1 under a different id (case 12's mechanism);
+  3. **recall miss** — the span carries a seeded defect (the `db.purge(rows)` line) and round 1
+     cited nothing there;
+  4. **invention** — the span carries no seeded defect and round 1 cited nothing there.
+  Characters 1–3 are the case-12 finding again: a bounded population whose labels and recall are
+  unstable. The FAIL stands, and it is the defect already on record, not a new one. Character 4
+  is the original complaint — a re-audit citing something the first audit could not have — and
+  would be a new finding.
+- both rounds empty → **UNMEASURED**, INVARIANT 10, counted as neither.
+
+**What is retained.** The run is kept under `acceptance/evidence/case13/2026-09-15-trial2/`:
+`s1.json`, `s2.json`, their `.raw.json` pre-gate arrays, both blocking lists, `diff.txt` as
+audited, and `models.txt`. Small text, committed, so the character above can be checked by a
+reader rather than taken from this file.
 
 ### Case 13 passes — but its first pass that day was vacuous, and that matters
 
@@ -1760,7 +1794,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **232** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **235** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
