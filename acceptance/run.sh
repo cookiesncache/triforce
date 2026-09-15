@@ -1602,6 +1602,40 @@ else
   sbad "case 15 cannot distinguish a gated-away floor effect from no floor effect"
 fi
 
+# THREE SUMMARY BLOCKS HAVE NOW DRIFTED FROM THE SAME TABLE.
+#
+# HANDOFF's case-17 results table is the source of truth: one row per run. The
+# count is then restated in prose in at least three other places -- the
+# work-in-order block, the tally, and the definition of done -- and every one of
+# them has been caught stale, twice while the run that falsified it was already
+# IN the table. A number copied by hand into four places goes stale in three,
+# and a document whose whole job is to be believed cannot carry a count nobody
+# checks. This counts the rows and holds every restatement to them.
+#
+# It deliberately does NOT check the informative counts. Those are judgements
+# about which runs had the power to falsify -- a refused ceiling is a run that
+# is correctly not counted -- and a check that cannot tell the two apart would
+# demand the wrong number and be switched off.
+_t17=$(awk '/^host       run  noise/{f=1;next} f&&/^```/{exit} f&&NF{n++} END{print n+0}' HANDOFF.md)
+_t17bad=""
+if [ "$_t17" -lt 1 ]; then
+  _t17bad=" (the results table has no rows, or its header changed)"
+else
+  # "N runs on 2 hosts" carries a second number that is NOT a run count, so only
+  # the leading one is taken. The other two forms restate the count twice each.
+  _c1=$(grep -ohE "[0-9]+ runs (across|on) [0-9]+ hosts" HANDOFF.md | grep -oE "^[0-9]+")
+  _c2=$(grep -ohE "[0-9]+ runs, [0-9]+ (TIES|ties)|[0-9]+ of [0-9]+, on any host" HANDOFF.md | grep -oE "[0-9]+")
+  for _c in $_c1 $_c2; do
+    [ "$_c" = "$_t17" ] || _t17bad="$_t17bad $_c"
+  done
+fi
+if [ -z "$_t17bad" ]; then
+  sok "every prose restatement of the case-17 run count matches the table's $_t17 rows"
+else
+  sbad "HANDOFF restates the case-17 run count as$_t17bad but the table has $_t17 rows -- a summary block has drifted again"
+fi
+
+
 echo
 echo "  $SPASS passed, $SFAIL failed"
 CHECKS=$((CHECKS + SPASS))

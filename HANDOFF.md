@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 224 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 225 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -1600,7 +1600,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **224** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **225** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
@@ -1625,7 +1625,10 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
   SKIPS rather than aborts the case when no effort is declared — with a skipped arm never
   scored, because comm over a missing file prints 0.000 and calls it a result,
   + 1 that no agent pins an effort, because a pinned effort is one no measurement has run
-  at), offline, currently green. Keep it green.
+  at,
+  + 1 that every prose restatement of the case-17 run count matches the results table, after
+  three separate summary blocks were caught stale against it — twice while the run that
+  falsified them was already IN that table), offline, currently green. Keep it green.
 
   Every check added on 2026-09-06 was probed for vacuity by breaking the thing it guards.
   A green that could not have been red is worth nothing, and this file has already
@@ -1651,9 +1654,9 @@ negative, and a smaller one than "the schema is leaking" — not an open item.
 pre-gate == post-gate in every run, so the gate does NOT remove floor-induced false positives.
 Removing the floor is the only defence, not one of two. (The "inconclusive" this block used to
 report was an untreated arm and is superseded — see the n=4 section above.)
-**The one-round premise ⚠️ MEASURED, and the verdict is SPLIT.** 10 runs across 2 hosts verified
+**The one-round premise ⚠️ MEASURED, and the verdict is SPLIT.** 12 runs across 2 hosts verified
 CLEAN on the exact diff they audit. The issue's literal clause — a forced second INDEPENDENT
-round — **HOLDS: arm (b) has never beaten one round, 10 of 10, on any host.** A CHAINED second
+round — **HOLDS: arm (b) has never beaten one round, 12 of 12, on any host.** A CHAINED second
 round at the same audit budget **does** beat it, on **both** hosts: 5 wins, 2 ties over 7
 informative runs. So "one round is enough" is defended exactly as specified and falsified as a
 general claim. That is a decision for the author, not a measurement gap — the corpus stopped
