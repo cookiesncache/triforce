@@ -259,6 +259,62 @@ if [ "${_ids:-0}" -eq 1 ]; then
 else
   sbad "hl_first_block lost the array in a multi-message transcript (got $_ids)"
 fi
+
+# --- PROVENANCE: WHICH MODEL ANSWERED, AND AT NO COST TO THE TRANSCRIPT ------
+#
+# The corpus saturated between 2026-09-09 and 2026-09-14 and one candidate
+# cause -- the model moving under the measurement -- was untestable, because no
+# run recorded which model served it. The stream carries it on every assistant
+# message and hl_transcript was discarding it.
+#
+# The load-bearing property is NOT that the id is captured. It is that
+# capturing it changes NOTHING ELSE: thirteen runs of scores are comparable
+# only if the transport that produced them still behaves identically. So the
+# first check is a byte comparison of stdout with the side channel on and off,
+# against a fixture, rather than a reading of the code.
+_sjm="$(mktemp)"
+cat > "$_sjm" <<'SJM'
+{"type":"system","subtype":"init"}
+{"type":"assistant","message":{"model":"claude-test-1","content":[{"type":"text","text":"alpha"}]}}
+{"type":"assistant","message":{"model":"claude-test-1","content":[{"type":"text","text":"omega"}]}}
+SJM
+_mout="$(mktemp)"; rm -f "$_mout"
+_plain=$(hl_transcript < "$_sjm")
+_withm=$(HL_MODEL_OUT="$_mout" hl_transcript < "$_sjm")
+if [ "$_plain" = "$_withm" ]; then
+  sok "recording the model leaves hl_transcript's output byte-identical -- prior runs stay comparable"
+else
+  sbad "the model side channel CHANGED the transcript; every score before it is now incomparable"
+fi
+if [ "$(sort -u "$_mout" 2>/dev/null | tr -d '[:space:]')" = "claude-test-1" ]; then
+  sok "hl_transcript records the model that answered, deduplicated, when asked to"
+else
+  sbad "the model id is not captured, so a model change stays as untestable as it was on 2026-09-14"
+fi
+# And with no destination set it must write nothing anywhere, not to a default.
+_before=$(hl_transcript < "$_sjm"; printf 'x')
+if [ -n "$_before" ]; then
+  sok "with no HL_MODEL_OUT set the transport still returns the transcript, side channel or not"
+else
+  sbad "hl_transcript depends on the side channel being configured -- provenance became load-bearing"
+fi
+rm -f "$_sjm" "$_mout"
+
+# The harness must actually open that channel, and must NAME an absence: a
+# blank provenance line reads as "nothing changed", which is a claim nobody
+# measured. INVARIANT 10 applied to metadata.
+if grep -qF 'HL_MODEL_OUT="$WORK/models.txt"' acceptance/live-cases.sh; then
+  sok "case 17's audits record which model served them"
+else
+  sbad "case 17 spends audits without recording the model -- the saturation question stays unanswerable"
+fi
+if grep -qF 'models that answered: NOT RECORDED' acceptance/live-cases.sh \
+   && grep -qF 'MORE THAN ONE MODEL SERVED THIS RUN' acceptance/live-cases.sh; then
+  sok "case 17 names a missing model id, and warns when the arms did not all run on one model"
+else
+  sbad "case 17 prints provenance that can be blank or can hide a mixed-model run"
+fi
+
 rm -f "$_sjf"
 
 # Two blocks must not be spliced: a hook exchange can make the reviewer restate

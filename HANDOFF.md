@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 225 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 230 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -706,6 +706,33 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### The runs now record which model answered them (2026-09-14)
+
+The saturation finding named three candidate causes and could only rank them by cost, because the
+second — the model moving under the measurement across the eight days the runs span — was not
+testable at all: **no run recorded which model served it.** The stream-json the transport already
+reads carries a model id on every assistant message, and `hl_transcript` was discarding it.
+
+**What was added.** When `HL_MODEL_OUT` names a file, the transport appends the model ids it saw,
+deduplicated. Case 17 sets it for every audit and prints a PROVENANCE block: the CLI version, the
+models that answered, and — if more than one did — a warning that the arms were not a controlled
+comparison on that run. It is metadata: it enters no score, no verdict, and no tally.
+
+**The property that matters is not that the id is captured.** It is that capturing it changed
+nothing else. Thirteen runs of scores are comparable only if the transport that produced them still
+behaves identically, so the suite compares `hl_transcript`'s stdout with the side channel on and off
+against a fixture, byte for byte, rather than reading the code and believing it. That check was
+probed by making the side channel append one character to stdout: it goes red.
+
+**An absence is named, not left blank.** If nothing was captured the block says `NOT RECORDED` and
+says why it matters, because a missing provenance line reads as "nothing changed" — a claim nobody
+measured. That is INVARIANT 10 applied to metadata, and it is checked.
+
+**What this does NOT do.** It cannot explain the thirteen runs already taken: none of them recorded
+a model, and no id can be recovered after the fact. The saturation question stays open for the runs
+that produced it. What changes is that the next batch can answer it, and that a future reader
+comparing two runs can tell whether they were served by the same model instead of assuming it.
+
 ### THE CORPUS HAS SATURATED: five of the last six runs were ceilings (2026-09-14)
 
 Run N on `804660d6` is the third consecutive ceiling and the sixth of thirteen. Arm (a) took all
@@ -728,9 +755,10 @@ scored and changes no prompt.
 **What it might be, in the order a next session should test them.** (1) `S4` is not as marginal as
 the corpus design assumed, and the four early "found by (c) ONLY" runs were the tail rather than the
 rule — the cheapest check, since it needs no new corpus, only the existing per-arm citations
-re-read. (2) The model moved under us across the eight days these runs span; the harness pins no
-model version and nothing here records one per run, which is a gap worth closing before the next
-batch. (3) Sampling: 1-in-7 and 5-in-6 are small numbers, and the difference is suggestive rather
+re-read. (2) The model moved under us across the eight days these runs span; the harness pinned no
+model version and nothing recorded one per run. **That gap was closed the same day — see the
+provenance section above — but only for runs taken from now on.** No id can be recovered for the
+thirteen already taken, so this hypothesis stays untestable on the evidence that raised it. (3) Sampling: 1-in-7 and 5-in-6 are small numbers, and the difference is suggestive rather
 than established.
 
 **What it costs, which is the part that matters now.** A ceiling run buys one tie for arm (b) and
@@ -1650,7 +1678,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **225** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **230** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
@@ -1678,7 +1706,13 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
   at,
   + 1 that every prose restatement of the case-17 run count matches the results table, after
   three separate summary blocks were caught stale against it — twice while the run that
-  falsified them was already IN that table), offline, currently green. Keep it green.
+  falsified them was already IN that table,
+  + 5 guarding model provenance: that recording which model answered leaves the transcript
+  BYTE-IDENTICAL (checked against a fixture, because thirteen runs of scores are comparable
+  only if the transport still behaves identically), that the id is captured and deduplicated,
+  that the transport still works with no side channel configured, that case 17 opens it, and
+  that a missing id is NAMED rather than printed blank — a blank reads as 'nothing changed',
+  which is a claim nobody measured), offline, currently green. Keep it green.
 
   Every check added on 2026-09-06 was probed for vacuity by breaking the thing it guards.
   A green that could not have been red is worth nothing, and this file has already

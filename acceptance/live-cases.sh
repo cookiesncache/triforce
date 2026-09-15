@@ -235,8 +235,15 @@ $(cat "$CRIT_FILE")
 
 MERGED DIFF (git diff -W):
 $(cat "$DIFF_FILE")"
+  # WHICH MODEL ANSWERED IS RECORDED, NOT ASSUMED.
+  #
+  # The corpus saturated between 2026-09-09 and 2026-09-14 (five ceilings in
+  # six runs against one in seven) and one candidate cause -- the model moving
+  # under the measurement across those days -- was untestable, because no run
+  # recorded which model served it. The stream carries it; the transport now
+  # appends it here. It is metadata only: it enters no score and no verdict.
   # shellcheck disable=SC2086
-  raw=$(printf '%s' "$prompt" | hl_claude --plugin-dir "${AUDIT_PLUGIN_DIR:-$ROOT}" \
+  raw=$(printf '%s' "$prompt" | HL_MODEL_OUT="$WORK/models.txt" hl_claude --plugin-dir "${AUDIT_PLUGIN_DIR:-$ROOT}" \
           --agent "ganondorf-t$tier" --allowedTools "" ${AUDIT_EFFORT:+--effort "$AUDIT_EFFORT"})
   # Extraction MUST be range-oriented — see the note in clean-corpus.sh. A
   # line-oriented `sed -n 's/.*<<<VIOLATIONS//p'` captures only the remainder of
@@ -1969,6 +1976,28 @@ PROBE
     fi
     echo "        cited by (a): $(tr '\n' ' ' < "$WORK/arm-a.txt")"
     echo "        cited by (f): $(tr '\n' ' ' < "$WORK/arm-f.txt")"
+  fi
+
+  # PROVENANCE. Not a result, and deliberately printed even on a refused run:
+  # a ceiling is exactly the run someone will later want to attribute to a
+  # model change, and "we do not know what served it" is the answer this block
+  # exists to stop being true again. An absence is NAMED rather than left blank
+  # -- a missing line reads as "nothing changed", which is a claim.
+  echo
+  echo "        PROVENANCE (metadata, enters no score):"
+  echo "        CLI: $(claude --version 2>/dev/null | head -1 | tr -d '\r' || printf 'unknown')"
+  if [ -s "$WORK/models.txt" ]; then
+    echo "        models that answered: $(sort -u "$WORK/models.txt" | tr '\n' ' ' | sed 's/ *$//')"
+    _nmod=$(sort -u "$WORK/models.txt" | wc -l | tr -d ' ')
+    if [ "${_nmod:-0}" -gt 1 ]; then
+      echo "        MORE THAN ONE MODEL SERVED THIS RUN. The arms are not a"
+      echo "        controlled comparison if they did not all run on the same"
+      echo "        model; read this run's scores with that in front of you."
+    fi
+  else
+    echo "        models that answered: NOT RECORDED. The transport captured no"
+    echo "        model id for this run, so nothing here can be attributed to a"
+    echo "        model version. Do not read the absence as 'unchanged'."
   fi
   echo
 fi

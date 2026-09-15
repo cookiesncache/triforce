@@ -40,14 +40,28 @@ done
 # Refuses rather than emitting nothing it did not earn: a silent empty string
 # here would read downstream as "the reviewer found nothing", which is the
 # INVARIANT 10 failure this whole file exists to prevent.
+#
+# IT ALSO RECORDS WHICH MODEL ANSWERED, AND CHANGES NOTHING TO DO IT.
+#
+# On 2026-09-14 case 17's corpus was found to have saturated: five ceilings in
+# the last six runs against one in the first seven. One candidate cause is that
+# the model moved under the measurement across the eight days those runs span,
+# and it could not be tested, because nothing recorded WHICH model served any
+# run. The stream already carries it on every assistant message and this
+# function was throwing it away.
+#
+# So: when HL_MODEL_OUT names a file, the model ids seen are APPENDED to it,
+# one per line. stdout is untouched -- byte for byte the same with the variable
+# set or unset, which run.sh checks against a fixture rather than trusting.
+# Provenance that alters the thing it describes is worse than none.
 hl_transcript() {
   if [ -z "$HL_PY" ]; then
     echo "headless: no working python interpreter; cannot read the transcript" >&2
     return 2
   fi
   "$HL_PY" -c '
-import json, sys
-out = []
+import json, os, sys
+out, models = [], []
 for line in sys.stdin:
     line = line.strip()
     if not line:
@@ -58,10 +72,23 @@ for line in sys.stdin:
         continue
     if d.get("type") != "assistant":
         continue
-    for b in d.get("message", {}).get("content", []) or []:
+    m = d.get("message", {}) or {}
+    mid = m.get("model")
+    if mid and mid not in models:
+        models.append(mid)
+    for b in m.get("content", []) or []:
         if isinstance(b, dict) and b.get("type") == "text":
             out.append(b.get("text") or "")
 sys.stdout.write("\n".join(out))
+# Side channel only. A failure to record provenance must never cost an audit
+# that was otherwise fine, so this cannot raise into the transcript path.
+dest = os.environ.get("HL_MODEL_OUT")
+if dest and models:
+    try:
+        with open(dest, "a", encoding="utf-8") as fh:
+            fh.write("\n".join(models) + "\n")
+    except Exception:
+        pass
 '
 }
 
