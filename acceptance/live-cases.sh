@@ -1990,9 +1990,11 @@ PROBE
     echo "        models that answered: $(sort -u "$WORK/models.txt" | tr '\n' ' ' | sed 's/ *$//')"
     _nmod=$(sort -u "$WORK/models.txt" | wc -l | tr -d ' ')
     if [ "${_nmod:-0}" -gt 1 ]; then
-      echo "        MORE THAN ONE MODEL SERVED THIS RUN. The arms are not a"
-      echo "        controlled comparison if they did not all run on the same"
-      echo "        model; read this run's scores with that in front of you."
+      echo "        MORE THAN ONE MODEL SERVED THIS RUN. Every audit here is"
+      echo "        tier 2 and the agent file pins one alias, so this is not the"
+      echo "        arms differing -- it is a FALLBACK, the alias being served by"
+      echo "        another model. The arms are then not a controlled comparison;"
+      echo "        read this run's scores with that in front of you."
     fi
   else
     echo "        models that answered: NOT RECORDED. The transport captured no"

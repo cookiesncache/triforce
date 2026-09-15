@@ -708,10 +708,19 @@ to withdraw.
 
 ### The runs now record which model answered them (2026-09-14)
 
-The saturation finding named three candidate causes and could only rank them by cost, because the
-second — the model moving under the measurement across the eight days the runs span — was not
+The saturation finding named four candidate causes and could only rank them by cost, because the
+second — the `opus` alias resolving to a different version across the eight days the runs span — was not
 testable at all: **no run recorded which model served it.** The stream-json the transport already
 reads carries a model id on every assistant message, and `hl_transcript` was discarding it.
+
+**Every run DOES prescribe a model, and that is exactly why this is the open question.** All ten
+case-17 audits are tier 2, and `agents/ganondorf-t2.md` pins `model: opus`; no run chooses, and
+nothing varies between the arms. But the suite REQUIRES that pin to be an alias — dated ids do not
+survive a release, and there is a check enforcing it — and an alias resolves to whichever version is
+current on the day. So the pin fixes the *family* and deliberately leaves the *version* floating.
+Eight days is long enough for that to move, and the resolved id is the only thing that would show
+it. Within a single run the concern is not drift but FALLBACK: an overloaded model can be served by
+another, which is why a mixed-model run is called out. That is a rare case, not a likely confound.
 
 **What was added.** When `HL_MODEL_OUT` names a file, the transport appends the model ids it saw,
 deduplicated. Case 17 sets it for every audit and prints a PROVENANCE block: the CLI version, the
@@ -755,11 +764,30 @@ scored and changes no prompt.
 **What it might be, in the order a next session should test them.** (1) `S4` is not as marginal as
 the corpus design assumed, and the four early "found by (c) ONLY" runs were the tail rather than the
 rule — the cheapest check, since it needs no new corpus, only the existing per-arm citations
-re-read. (2) The model moved under us across the eight days these runs span; the harness pinned no
-model version and nothing recorded one per run. **That gap was closed the same day — see the
+re-read. (2) The `opus` alias every tier-2 audit runs under resolved to a different version somewhere
+across the eight days these runs span. The model is PRESCRIBED — tier 2, `model: opus`, every audit
+of every arm — so this is not variation between runs or between arms; it is the version the alias
+points at moving underneath a stable pin, which is what pinning an alias buys and costs. Nothing
+recorded the resolved id, so it could not be checked. **That gap was closed the same day — see the
 provenance section above — but only for runs taken from now on.** No id can be recovered for the
-thirteen already taken, so this hypothesis stays untestable on the evidence that raised it. (3) Sampling: 1-in-7 and 5-in-6 are small numbers, and the difference is suggestive rather
+thirteen already taken, so this hypothesis stays untestable on the evidence that raised it. (3) **The CLI moved mid-series, and this one the record can partly speak to.** This file has
+`2.1.258` observed on 2026-09-02 and `2.1.260` on 2026-09-10; the ceiling shift begins at run I on
+2026-09-09. The bump window OVERLAPS the shift but does not pin to it — 2.1.258 was last *seen* on
+09-02 and 2.1.260 first *seen* on 09-10, so the change could fall anywhere between, including after
+run I. Neither established nor excluded, and the only run-level evidence that would tighten it is
+the CLI version per run, which the provenance block now prints and no past run recorded.
+(4) Sampling: 1-in-7 and 5-in-6 are small numbers, and the difference is suggestive rather
 than established.
+
+**Can release dates settle (2) retroactively? They bound it; they do not answer it.** The `opus`
+pin resolves SERVER-SIDE. An alias can be repointed without a CLI release, so the binary's version
+and its release date are not the key to the mapping — the key is the alias→version history, which
+is an external record and is not held in this repo or in the binary. If that record shows `opus`
+pointed at exactly one version across 2026-09-03..09-14, hypothesis (2) is ruled out for the whole
+series, and that is a legitimate and very cheap desk check — but it is an argument from an outside
+source, weaker than a recorded id, and it should be cited with that source rather than asserted.
+Note also that a stable alias→version map would still not settle it completely: serving-side
+routing and fallback can change behaviour with no version bump at all.
 
 **What it costs, which is the part that matters now.** A ceiling run buys one tie for arm (b) and
 nothing at all for (c), (d) or (e) — the three arms with open questions. At the recent rate each
