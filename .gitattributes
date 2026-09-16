@@ -8,3 +8,6 @@
 # awk -F'\t'; a CRLF checkout would put a stray \r in every last field and make
 # every run show the file as modified.
 *.tsv text eol=lf
+acceptance/ablation/corpus/**/*.patch -text
+acceptance/ablation/runs/** -text
+acceptance/evidence/** -text
