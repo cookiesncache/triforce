@@ -1,0 +1,172 @@
+diff --git a/django/utils/module_loading.py b/django/utils/module_loading.py
+index 70f26d7..4259118 100644
+--- a/django/utils/module_loading.py
++++ b/django/utils/module_loading.py
+@@ -1,6 +1,7 @@
+ import copy
+ import os
+ import sys
++import types
+ from importlib import import_module
+ from importlib.util import find_spec as importlib_find
+ 
+@@ -118,3 +119,21 @@ def module_dir(module):
+         if filename is not None:
+             return os.path.dirname(filename)
+     raise ValueError("Cannot determine directory containing %s" % module)
++
++
++def qualname(obj):
++    """
++    Return the fully qualified dotted path of a class or function, as
++    "<module>.<qualname>". Raise TypeError if obj is not a class or function.
++    """
++    if not (
++        isinstance(obj, type)
++        or isinstance(
++            obj, (types.FunctionType, types.BuiltinFunctionType, types.MethodType)
++        )
++    ):
++        raise TypeError(
++            "qualname() argument must be a class or function, not %r"
++            % type(obj).__name__
++        )
++    return f"{obj.__module__}.{obj.__qualname__}"
+diff --git a/docs/ref/utils.txt b/docs/ref/utils.txt
+index 08a264c..4968f8a 100644
+--- a/docs/ref/utils.txt
++++ b/docs/ref/utils.txt
+@@ -842,6 +842,18 @@ Functions for working with Python modules.
+         Support for importing modules was added, along with deterministic
+         handling for ambiguous cases.
+ 
++.. function:: qualname(obj)
++
++    Returns the fully qualified dotted path of a class or function, as
++    ``"<module>.<qualname>"``. Raises :exc:`TypeError` if ``obj`` is not a
++    class or function. For example::
++
++        from django.utils.module_loading import qualname
++
++        qualname(ValidationError)  # 'django.core.exceptions.ValidationError'
++
++    .. versionadded:: 6.2
++
+ ``django.utils.safestring``
+ ===========================
+ 
+diff --git a/docs/releases/6.2.txt b/docs/releases/6.2.txt
+index 4631c9d..f188925 100644
+--- a/docs/releases/6.2.txt
++++ b/docs/releases/6.2.txt
+@@ -258,6 +258,9 @@ Utilities
+   top-level modules did not work, and submodules only worked if already
+   imported.
+ 
++* Added the :func:`.utils.module_loading.qualname` function, which returns
++  the fully qualified dotted path of a class or function.
++
+ * ...
+ 
+ Validators
+diff --git a/tests/utils_tests/test_module_loading.py b/tests/utils_tests/test_module_loading.py
+index 7752da1..83cd62c 100644
+--- a/tests/utils_tests/test_module_loading.py
++++ b/tests/utils_tests/test_module_loading.py
+@@ -4,12 +4,14 @@ import unittest
+ from importlib import import_module
+ from zipimport import zipimporter
+ 
++from django.core.exceptions import ValidationError
+ from django.test import SimpleTestCase, modify_settings
+ from django.test.utils import extend_sys_path
+ from django.utils.module_loading import (
+     autodiscover_modules,
+     import_string,
+     module_has_submodule,
++    qualname,
+ )
+ 
+ 
+@@ -170,6 +172,81 @@ class ModuleImportTests(SimpleTestCase):
+             import_string("")
+ 
+ 
++class QualnameSampleClass:
++    def sample_method(self):
++        pass
++
++    @staticmethod
++    def sample_staticmethod():
++        pass
++
++    @classmethod
++    def sample_classmethod(cls):
++        pass
++
++    class NestedClass:
++        pass
++
++
++def qualname_sample_function():
++    pass
++
++
++class QualnameTests(SimpleTestCase):
++    def test_classes_and_functions(self):
++        self.assertEqual(
++            qualname(QualnameSampleClass),
++            "utils_tests.test_module_loading.QualnameSampleClass",
++        )
++        self.assertEqual(
++            qualname(qualname_sample_function),
++            "utils_tests.test_module_loading.qualname_sample_function",
++        )
++        self.assertEqual(
++            qualname(ValidationError), "django.core.exceptions.ValidationError"
++        )
++        self.assertEqual(
++            qualname(import_string), "django.utils.module_loading.import_string"
++        )
++        self.assertEqual(
++            qualname(QualnameSampleClass.NestedClass),
++            "utils_tests.test_module_loading.QualnameSampleClass.NestedClass",
++        )
++        self.assertEqual(
++            qualname(QualnameSampleClass.sample_method),
++            "utils_tests.test_module_loading.QualnameSampleClass.sample_method",
++        )
++        self.assertEqual(
++            qualname(QualnameSampleClass.sample_staticmethod),
++            "utils_tests.test_module_loading.QualnameSampleClass.sample_staticmethod",
++        )
++        self.assertEqual(
++            qualname(QualnameSampleClass.sample_classmethod),
++            "utils_tests.test_module_loading.QualnameSampleClass.sample_classmethod",
++        )
++        self.assertEqual(qualname(len), "builtins.len")
++
++    def test_invalid_values(self):
++        msg = (
++            "qualname() argument must be a class or function, not "
++            "'QualnameSampleClass'"
++        )
++        with self.assertRaisesMessage(TypeError, msg):
++            qualname(QualnameSampleClass())
++        msg = "qualname() argument must be a class or function, not 'int'"
++        with self.assertRaisesMessage(TypeError, msg):
++            qualname(1)
++        msg = "qualname() argument must be a class or function, not 'str'"
++        with self.assertRaisesMessage(TypeError, msg):
++            qualname("a")
++        msg = "qualname() argument must be a class or function, not 'NoneType'"
++        with self.assertRaisesMessage(TypeError, msg):
++            qualname(None)
++        msg = "qualname() argument must be a class or function, not 'module'"
++        with self.assertRaisesMessage(TypeError, msg):
++            qualname(sys)
++
++
+ @modify_settings(INSTALLED_APPS={"append": "utils_tests.test_module"})
+ class AutodiscoverModulesTestCase(SimpleTestCase):
+     def tearDown(self):

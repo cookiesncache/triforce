@@ -1,0 +1,10 @@
+Now the implementation.
+Done. `django.utils.module_loading.qualname()` added; all 1539 affected tests pass, black/flake8 clean.
+
+**Changes**
+- `django/utils/module_loading.py` — new `qualname(obj)` returning `f"{obj.__module__}.{obj.__qualname__}"`, raising `TypeError("<obj> is not a class or function.")` otherwise.
+- Replaced the hand-rolled `__module__ + "." + __qualname__` pattern in 9 call sites: `admindocs/utils.py`, `core/checks/urls.py`, `core/mail/backends/base.py`, `db/models/fields/__init__.py` (×3), `tasks/backends/immediate.py`, `tasks/base.py`, `test/runner.py`, `test/testcases.py` (×2), `urls/resolvers.py`.
+- Tests: `QualnameTests.test_classes_and_functions` (top-level/nested classes, functions, methods, builtins) and `test_invalid_values` in `tests/utils_tests/test_module_loading.py`.
+- Docs: `docs/ref/utils.txt` (`versionadded:: 6.2`) and `docs/releases/6.2.txt` Utilities entry.
+
+Note: `isort` isn't installed locally so I couldn't run it; imports were placed alphabetically by hand.

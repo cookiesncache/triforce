@@ -1,0 +1,110 @@
+..............EEFFEEEE......
+======================================================================
+ERROR: test_classes_and_functions (utils_tests.test_module_loading.QualnameTests.test_classes_and_functions) (val=<module 'sys' (built-in)>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\tests\utils_tests\test_module_loading.py", line 306, in test_classes_and_functions
+    self.assertEqual(qualname(val), expected)
+                     ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\django\utils\module_loading.py", line 135, in qualname
+    raise TypeError(
+    ...<2 lines>...
+    )
+TypeError: qualname() argument must be a class or function, not 'module'
+
+======================================================================
+ERROR: test_classes_and_functions (utils_tests.test_module_loading.QualnameTests.test_classes_and_functions) (val=<module 'django.utils.module_loading' from 'C:\\Users\\simsc\\AppData\\Local\\Temp\\tmp.f0ON7oi8yo\\score\\django\\utils\\module_loading.py'>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\tests\utils_tests\test_module_loading.py", line 306, in test_classes_and_functions
+    self.assertEqual(qualname(val), expected)
+                     ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\django\utils\module_loading.py", line 135, in qualname
+    raise TypeError(
+    ...<2 lines>...
+    )
+TypeError: qualname() argument must be a class or function, not 'module'
+
+======================================================================
+ERROR: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val=<utils_tests.test_module_loading.TopLevelClass object at 0x000001A85E4CE3C0>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\tests\utils_tests\test_module_loading.py", line 322, in test_invalid_values
+    qualname(val)
+    ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\django\utils\module_loading.py", line 135, in qualname
+    raise TypeError(
+    ...<2 lines>...
+    )
+TypeError: qualname() argument must be a class or function, not 'TopLevelClass'
+
+======================================================================
+ERROR: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val=None)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\tests\utils_tests\test_module_loading.py", line 322, in test_invalid_values
+    qualname(val)
+    ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\django\utils\module_loading.py", line 135, in qualname
+    raise TypeError(
+    ...<2 lines>...
+    )
+TypeError: qualname() argument must be a class or function, not 'NoneType'
+
+======================================================================
+ERROR: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val=123)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\tests\utils_tests\test_module_loading.py", line 322, in test_invalid_values
+    qualname(val)
+    ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\django\utils\module_loading.py", line 135, in qualname
+    raise TypeError(
+    ...<2 lines>...
+    )
+TypeError: qualname() argument must be a class or function, not 'int'
+
+======================================================================
+ERROR: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val='str')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\tests\utils_tests\test_module_loading.py", line 322, in test_invalid_values
+    qualname(val)
+    ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\django\utils\module_loading.py", line 135, in qualname
+    raise TypeError(
+    ...<2 lines>...
+    )
+TypeError: qualname() argument must be a class or function, not 'str'
+
+======================================================================
+FAIL: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val=<function QualnameTests.test_invalid_values.<locals>.<lambda> at 0x000001A85E50C720>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\tests\utils_tests\test_module_loading.py", line 321, in test_invalid_values
+    with self.subTest(val=val), self.assertRaisesMessage(ValueError, msg):
+                                ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\simsc\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 148, in __exit__
+    next(self.gen)
+    ~~~~^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val=<function QualnameTests.test_invalid_values.<locals>.local_func at 0x000001A85E50C860>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\tests\utils_tests\test_module_loading.py", line 321, in test_invalid_values
+    with self.subTest(val=val), self.assertRaisesMessage(ValueError, msg):
+                                ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\simsc\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 148, in __exit__
+    next(self.gen)
+    ~~~~^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.083s
+
+FAILED (failures=2, errors=6)
+Testing against Django installed in 'C:\Users\simsc\AppData\Local\Temp\tmp.f0ON7oi8yo\score\django'
+Found 22 test(s).
+System check identified no issues (0 silenced).

@@ -1415,8 +1415,10 @@ else
     sbad "ablation: an arm could see the answer key, or the key is not drawn"
   fi
   if grep -qF 'EMPTY DIFF: the arm changed nothing' acceptance/ablation.sh \
-     && grep -qF 'if [ "$completed" = 1 ]; then' acceptance/ablation.sh; then
-    sok "ablation: an arm that changed nothing is not completed, and hidden tests run only on a completed cell"
+     && grep -qF 'if [ "$completed" = 1 ]; then' acceptance/ablation.sh \
+     && grep -qF 'git -C "$REPO" show "$sha:$_f" > "$_f"' acceptance/ablation.sh \
+     && grep -qF 'OUT_REF=$(comm -13' acceptance/ablation.sh; then
+    sok "ablation: an arm that changed nothing is not completed; hidden tests replace the arm's test files; arm B is scored from the branch zelda leaves"
   else
     sbad "ablation: an empty diff could be scored -- the hidden tests would pass on a no-op arm only if the corpus were broken, and fail otherwise, and neither is a measurement"
   fi

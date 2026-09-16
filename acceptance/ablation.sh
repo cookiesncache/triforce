@@ -60,6 +60,13 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=acceptance/headless.sh
 . "$ROOT/acceptance/headless.sh"
+# WINDOWS PATHS FOR THE CLI. MSYS_NO_PATHCONV=1 is needed so a leading
+# "/triforce" is not rewritten into a Windows path -- but it also stops Git
+# Bash converting "/c/Users/..." for --plugin-dir, and the CLI then silently
+# loads no plugin ("Unknown command: /triforce", 2 seconds, no model). So every
+# path handed to the CLI is converted here, explicitly.
+wpath() { cygpath -m "$1" 2>/dev/null || printf '%s' "$1"; }
+ROOT_W="$(wpath "$ROOT")"
 
 REPO="$ROOT/../django"; CORPUS="$ROOT/acceptance/ablation/corpus"; OUT="$ROOT/acceptance/ablation/runs"
 TASKS=""; ARMS="A,B"; REPS=2; DRY=0
@@ -192,6 +199,8 @@ run_cell() {   # run_cell <task> <arm> <rep>
   [ ! -e "$WT/reference.patch" ] && [ ! -e "$WT/tests.patch" ] || { echo "  ABORT: answer key inside the worktree"; return 1; }
   local prompt; prompt=$(cat "$T/task.md")
   echo "  run   task$t $arm$rep  sha=$(git -C "$REPO" rev-parse --short "$sha")  labels=[$labels]"
+  local _wt_before; _wt_before=$(git -C "$REPO" worktree list --porcelain | sed -n 's/^worktree //p' | sort)
+  local _br_before; _br_before=$(git -C "$REPO" branch --format='%(refname:short)' | sort)
   if [ "$DRY" = 1 ]; then echo "        (dry run: would invoke arm $arm in $WT)"; git -C "$REPO" worktree remove --force "$WT" >/dev/null 2>&1; return 0; fi
   t0=$(date +%s)
   case "$arm" in
@@ -215,10 +224,16 @@ run_cell() {   # run_cell <task> <arm> <rep>
         printf 'S6\tconcurrency or ordering hazard\n'
       } > "$WT/.triforce/criteria.tsv"
       cp "$WT/.triforce/criteria.tsv" "$R/criteria.tsv"
+      # COMMITTED, not left untracked. zelda takes its OWN worktree (EnterWorktree,
+      # step 2 of the skill) branched from this HEAD, and an untracked file does
+      # not follow: the first counted B cell found no frozen file there,
+      # extracted its own criteria, had no AskUserQuestion, asked in prose and
+      # ended its turn. agent.diff already excludes both paths.
+      ( cd "$WT" && git add .triforce/criteria.tsv .claude/settings.json && git -c user.email=ablation@local -c user.name=ablation commit -qm "ablation: frozen criteria and worktree setting" ) >/dev/null 2>&1
       # MSYS_NO_PATHCONV: Git Bash rewrites an argument that starts with "/" into
       # a Windows path, so "/triforce ..." reached the CLI as "C:/Program
       # Files/Git/triforce ..." and the first B cell ran with no skill at all.
-      ( cd "$WT" && printf '/triforce %s' "$prompt" | MSYS_NO_PATHCONV=1 TRIFORCE_CRITERIA_FILE="$WT/.triforce/criteria.tsv" timeout "${ABL_TIMEOUT:-3600}" claude -p --plugin-dir "$ROOT" \
+      ( cd "$WT" && printf '/triforce %s' "$prompt" | MSYS_NO_PATHCONV=1 TRIFORCE_CRITERIA_FILE="$(wpath "$WT/.triforce/criteria.tsv")" timeout "${ABL_TIMEOUT:-3600}" claude -p --plugin-dir "$ROOT_W" \
           --output-format stream-json --verbose --dangerously-skip-permissions \
           --strict-mcp-config --disallowedTools "WebFetch,WebSearch" \
           > "$R/stream.jsonl" 2> "$R/stderr.txt" ); rc=$? ;;
@@ -226,11 +241,26 @@ run_cell() {   # run_cell <task> <arm> <rep>
   esac
   t1=$(date +%s); wall=$((t1 - t0))
   hl_transcript < "$R/stream.jsonl" > "$R/transcript.txt" 2>/dev/null
-  IFS=$'\t' read -r cost tin tout cc cr models subtype turns < <(usage_of "$R/stream.jsonl")
-  # What the arm produced, relative to base. Committed or not, staged or not.
-  ( cd "$WT" && git add -A >/dev/null 2>&1 && git diff --cached "$base" -- . ':!.claude' ':!.triforce' > "$R/agent.diff" 2>/dev/null )
-  IFS='|' read -r _psrc _ppath _pskill _pmcp < <(plugin_state "$R/stream.jsonl")
-  _rootn=$(printf '%s' "$ROOT" | sed 's|^/c/|C:/|')
+  IFS=$'\t' read -r cost tin tout cc cr models subtype turns < <(usage_of "$R/stream.jsonl" | tr -d '\r')
+  # WHAT THE ARM PRODUCED, and where. Arm A edits the checkout it was given.
+  # Arm B does not: zelda takes its own worktree and, per its contract, leaves
+  # the merged work on a named branch -- the first completed B cell was scored
+  # "EMPTY DIFF" against a checkout zelda never touched, after a full run. So
+  # for B the output is the newest branch the cell created, scored in a fresh
+  # worktree of that branch; for A it is the checkout, as before.
+  SCORE_WT="$WT"; OUT_REF=""
+  if [ "$arm" = B ]; then
+    OUT_REF=$(comm -13 <(printf '%s\n' "$_br_before") <(git -C "$REPO" branch --format='%(refname:short)' | sort) | grep -v '^$' | head -1)
+    if [ -n "$OUT_REF" ]; then
+      SCORE_WT="$(mktemp -d)/score"
+      git -C "$REPO" worktree add -q --detach "$SCORE_WT" "$OUT_REF" 2>/dev/null || SCORE_WT="$WT"
+    fi
+  fi
+  printf '%s\n' "${OUT_REF:-<checkout>}" > "$R/output-ref.txt"
+  ( cd "$SCORE_WT" && git add -A >/dev/null 2>&1 && git diff --cached "$base" -- . ':!.claude' ':!.triforce' > "$R/agent.diff" 2>/dev/null )
+  # tr -d '\r': Windows python prints CRLF, and "0\r" is not "0".
+  IFS='|' read -r _psrc _ppath _pskill _pmcp < <(plugin_state "$R/stream.jsonl" | tr -d '\r')
+  _rootn="$ROOT_W"
   _pstate_ok=1
   case "$arm" in
     A) [ -z "$_psrc" ] && [ "$_pskill" = 0 ] && [ "${_pmcp:-0}" = 0 ] || _pstate_ok=0 ;;
@@ -248,17 +278,22 @@ run_cell() {   # run_cell <task> <arm> <rep>
     grep -c 'AskUserQuestion' "$R/transcript.txt" >/dev/null 2>&1 && note="$note; mentions AskUserQuestion"
     # zelda's own worktrees, if any survived, are noise for git; prune after the copy.
   fi
-  # HIDDEN ACCEPTANCE: the commit's tests on top of the arm's output. Applied to
-  # the arm's tree exactly as left; a conflict with the arm's own test edits is
-  # a fail, because the tests are the spec.
+  # HIDDEN ACCEPTANCE: the commit's own test FILES replace the arm's versions,
+  # then the touched labels run. This used to `git apply --3way` the tests
+  # patch and call a conflict a fail; the first completed B cell conflicted
+  # because it had written its own tests at the same place in the same file,
+  # which measures where an arm puts its tests, not whether its implementation
+  # works. Replacing the files scores every arm against the same tests with no
+  # merge in the way. On task 01 the change altered no outcome: both arms fail
+  # the same 2 + 6 either way (recorded in HANDOFF before any further cell).
   if [ "$completed" = 1 ]; then
-    if ( cd "$WT" && git apply --3way "$T/tests.patch" >"$R/apply.log" 2>&1 ); then
-      # shellcheck disable=SC2086
-      ( cd "$WT" && PYTHONPATH="$WT" timeout 900 "$ABL_PY" tests/runtests.py --parallel 1 --noinput $labels > "$R/tests.log" 2>&1 ); trc=$?
-      [ "$trc" -eq 0 ] && pass=1 || note="$note; hidden tests rc=$trc"
-    else
-      note="$note; TESTS_APPLY_FAILED"; cp "$R/apply.log" "$R/tests.log"
-    fi
+    _tfiles=$(git -C "$REPO" diff --name-only "$base" "$sha" -- tests/)
+    ( cd "$SCORE_WT" && for _f in $_tfiles; do
+        mkdir -p "$(dirname "$_f")"; git -C "$REPO" show "$sha:$_f" > "$_f" 2>/dev/null || rm -f "$_f"
+      done ) && echo "test files replaced from $sha: $_tfiles" > "$R/apply.log"
+    # shellcheck disable=SC2086
+    ( cd "$SCORE_WT" && PYTHONPATH="$SCORE_WT" timeout 900 "$ABL_PY" tests/runtests.py --parallel 1 --noinput $labels > "$R/tests.log" 2>&1 ); trc=$?
+    [ "$trc" -eq 0 ] && pass=1 || note="$note; hidden tests rc=$trc"
   else
     echo "UNRUN or incomplete; hidden tests not applied" > "$R/tests.log"
   fi
@@ -268,7 +303,18 @@ run_cell() {   # run_cell <task> <arm> <rep>
     "$t" "$arm" "$rep" "$sha" "$completed" "$pass" "$wall" "$cost" "$tin" "$tout" "$cc" "$cr" "$models" "$tier" "$note" | tee -a "$RESULTS" | tail -1 >> "$R/meta.tsv"
   echo "        completed=$completed pass=$pass wall=${wall}s cost=\$${cost:-?} models=[$models] ${note:+note=$note}"
   git -C "$REPO" worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$(dirname "$WT")"
+  [ "$SCORE_WT" != "$WT" ] && { git -C "$REPO" worktree remove --force "$SCORE_WT" >/dev/null 2>&1; rm -rf "$(dirname "$SCORE_WT")"; }
+  # zelda's own worktrees (and their branches) do not outlive the cell. Their
+  # content is already in agent.diff if it was merged, and in the stream if not.
+  local _w
+  while IFS= read -r _w; do
+    [ -n "$_w" ] || continue
+    git -C "$REPO" worktree unlock "$_w" >/dev/null 2>&1
+    git -C "$REPO" worktree remove --force "$_w" >/dev/null 2>&1 || rm -rf "$_w"
+  done < <(comm -13 <(printf '%s\n' "$_wt_before") <(git -C "$REPO" worktree list --porcelain | sed -n 's/^worktree //p' | sort) | grep -v '^$')
   git -C "$REPO" worktree prune >/dev/null 2>&1
+  comm -13 <(printf '%s\n' "$_br_before") <(git -C "$REPO" branch --format='%(refname:short)' | sort) | grep -v '^$' \
+    | xargs -r -n1 git -C "$REPO" branch -D >/dev/null 2>&1
 }
 
 echo "triforce ablation (Arm A): with vs without, paired on hidden tests"

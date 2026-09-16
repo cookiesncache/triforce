@@ -1,3 +1,2 @@
 task	arm	rep	sha	completed	pass	wall_s	cost_usd	tokens_in	tokens_out	cache_create	cache_read	models	tier	note
-01	A	1	0398417c503e9f32674b36865abc54e575e8bcd7	1	0	175	1.0177064999999998	27	11987	62212	678637	claude-opus-5,claude-haiku-4-5-20251001		hidden tests rc=1
 01	B	1	0398417c503e9f32674b36865abc54e575e8bcd7	1	0	669	4.611143700000003	178	46195	243890	5533209	claude-opus-5,claude-sonnet-5,claude-haiku-4-5-20251001	T0	hidden tests rc=1 under the replace rule (2 failures, 6 errors, same as A1); under the apply rule TESTS_APPLY_FAILED (arm's own tests conflicted). Output on branch worktree-zelda-qualname-36523 @ af64693; scored from the branch after the fact.

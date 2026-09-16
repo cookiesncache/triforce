@@ -53,7 +53,7 @@ Confirm them with the user before freezing, using `AskUserQuestion`:
 
 Once confirmed, freeze and hash them into the ledger. **They are never recomputed**, not after a fix, not at round 2, not when they turn out to be inconvenient.
 
-**Pre-frozen criteria.** If the frozen file — `$TRIFORCE_CRITERIA_FILE`, default `.triforce/criteria.tsv` — already exists and is non-empty when you start, the user froze the list before invoking you. Read it, do not extract, do not confirm, do not edit; hash it into the ledger and proceed. This is the only path that skips confirmation. It exists so the workflow can be driven headlessly, where `AskUserQuestion` does not exist, and it authors nothing: the file is the user's, and a run that finds one has been handed its exam.
+**Pre-frozen criteria.** If the frozen file — `$TRIFORCE_CRITERIA_FILE`, default `.triforce/criteria.tsv` — already exists and is non-empty when you start (check the checkout you were invoked in, before taking your worktree; a tracked file follows you into it, an untracked one does not), the user froze the list before invoking you. Read it, do not extract, do not confirm, do not edit; hash it into the ledger and proceed. This is the only path that skips confirmation. It exists so the workflow can be driven headlessly, where `AskUserQuestion` does not exist, and it authors nothing: the file is the user's, and a run that finds one has been handed its exam.
 
 See `references/criteria.md` for the extraction rules and the frozen file format.
 

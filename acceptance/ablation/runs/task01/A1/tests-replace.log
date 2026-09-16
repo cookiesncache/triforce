@@ -1,0 +1,146 @@
+..............EEFFEEEE......
+======================================================================
+ERROR: test_classes_and_functions (utils_tests.test_module_loading.QualnameTests.test_classes_and_functions) (val=<module 'sys' (built-in)>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 57, in qualname
+    module, name = obj.__module__, obj.__qualname__
+                   ^^^^^^^^^^^^^^
+AttributeError: module 'sys' has no attribute '__module__'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\tests\utils_tests\test_module_loading.py", line 306, in test_classes_and_functions
+    self.assertEqual(qualname(val), expected)
+                     ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 59, in qualname
+    raise TypeError(f"{obj!r} is not a class or function.")
+TypeError: <module 'sys' (built-in)> is not a class or function.
+
+======================================================================
+ERROR: test_classes_and_functions (utils_tests.test_module_loading.QualnameTests.test_classes_and_functions) (val=<module 'django.utils.module_loading' from 'C:\\Users\\simsc\\AppData\\Local\\Temp\\tmp.PfePqYm9xB\\score\\django\\utils\\module_loading.py'>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 57, in qualname
+    module, name = obj.__module__, obj.__qualname__
+                   ^^^^^^^^^^^^^^
+AttributeError: module 'django.utils.module_loading' has no attribute '__module__'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\tests\utils_tests\test_module_loading.py", line 306, in test_classes_and_functions
+    self.assertEqual(qualname(val), expected)
+                     ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 59, in qualname
+    raise TypeError(f"{obj!r} is not a class or function.")
+TypeError: <module 'django.utils.module_loading' from 'C:\\Users\\simsc\\AppData\\Local\\Temp\\tmp.PfePqYm9xB\\score\\django\\utils\\module_loading.py'> is not a class or function.
+
+======================================================================
+ERROR: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val=<utils_tests.test_module_loading.TopLevelClass object at 0x00000210AD0BA270>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 57, in qualname
+    module, name = obj.__module__, obj.__qualname__
+                                   ^^^^^^^^^^^^^^^^
+AttributeError: 'TopLevelClass' object has no attribute '__qualname__'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\tests\utils_tests\test_module_loading.py", line 322, in test_invalid_values
+    qualname(val)
+    ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 59, in qualname
+    raise TypeError(f"{obj!r} is not a class or function.")
+TypeError: <utils_tests.test_module_loading.TopLevelClass object at 0x00000210AD0BA270> is not a class or function.
+
+======================================================================
+ERROR: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val=None)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 57, in qualname
+    module, name = obj.__module__, obj.__qualname__
+                   ^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute '__module__'. Did you mean: '__reduce__'?
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\tests\utils_tests\test_module_loading.py", line 322, in test_invalid_values
+    qualname(val)
+    ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 59, in qualname
+    raise TypeError(f"{obj!r} is not a class or function.")
+TypeError: None is not a class or function.
+
+======================================================================
+ERROR: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val=123)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 57, in qualname
+    module, name = obj.__module__, obj.__qualname__
+                   ^^^^^^^^^^^^^^
+AttributeError: 'int' object has no attribute '__module__'. Did you mean: '__mod__'?
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\tests\utils_tests\test_module_loading.py", line 322, in test_invalid_values
+    qualname(val)
+    ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 59, in qualname
+    raise TypeError(f"{obj!r} is not a class or function.")
+TypeError: 123 is not a class or function.
+
+======================================================================
+ERROR: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val='str')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 57, in qualname
+    module, name = obj.__module__, obj.__qualname__
+                   ^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute '__module__'. Did you mean: '__mod__'?
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\tests\utils_tests\test_module_loading.py", line 322, in test_invalid_values
+    qualname(val)
+    ~~~~~~~~^^^^^
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django\utils\module_loading.py", line 59, in qualname
+    raise TypeError(f"{obj!r} is not a class or function.")
+TypeError: 'str' is not a class or function.
+
+======================================================================
+FAIL: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val=<function QualnameTests.test_invalid_values.<locals>.<lambda> at 0x00000210AD146980>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\tests\utils_tests\test_module_loading.py", line 321, in test_invalid_values
+    with self.subTest(val=val), self.assertRaisesMessage(ValueError, msg):
+                                ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\simsc\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 148, in __exit__
+    next(self.gen)
+    ~~~~^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_invalid_values (utils_tests.test_module_loading.QualnameTests.test_invalid_values) (val=<function QualnameTests.test_invalid_values.<locals>.local_func at 0x00000210AD146C00>)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\tests\utils_tests\test_module_loading.py", line 321, in test_invalid_values
+    with self.subTest(val=val), self.assertRaisesMessage(ValueError, msg):
+                                ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\simsc\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 148, in __exit__
+    next(self.gen)
+    ~~~~^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 22 tests in 0.084s
+
+FAILED (failures=2, errors=6)
+Testing against Django installed in 'C:\Users\simsc\AppData\Local\Temp\tmp.PfePqYm9xB\score\django'
+Found 22 test(s).
+System check identified no issues (0 silenced).

@@ -897,6 +897,61 @@ to withdraw.
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
 
+### Ablation: the first counted pair, and where it stopped (2026-09-16)
+
+**STOPPED after task 01, rep 1, both arms — 2 of 40 cells.** Resume with
+`bash acceptance/ablation.sh` (it skips recorded cells, interleaves A and B per task, uninstalls
+the marketplace copy for the run and reinstalls it on exit). Nothing below is a verdict; the
+decision rule needs the paired table.
+
+```
+cell   completed  hidden tests            wall    cost     models                 tier   output
+A1     yes        FAIL (2 fail, 6 error)  175 s   $1.02    opus                   --     the checkout
+B1     yes        FAIL (2 fail, 6 error)  669 s   $4.61    opus, sonnet, haiku    T0     branch worktree-zelda-qualname-36523
+```
+
+**A tie on the primary metric, for the same reason on both sides.** Both arms implemented
+`qualname()` and both raise `TypeError` on invalid input; the commit's hidden tests expect
+`ValueError`. The names-only prompt does not fix the exception type, the hidden tests do, and
+neither arm could know. Task 01 therefore cannot discriminate on pass rate. It does discriminate on
+cost: **4.5× dollars, 3.8× wall**, with the audit SKIPPED at T0 — so that multiple is plan review +
+link + merge alone, before ganondorf is ever dispatched.
+
+**What B1 is the first record of.** The full `/triforce` path has never been observed end to end
+before this cell: zelda on `claude-opus-5` (the skill's own pin), reading its contract by path,
+preflight (T0), its own worktree, the pre-frozen criteria honoured ("skipping extraction and
+confirmation per contract"), the ledger keyed and hashed, a plan written, a **fresh `triforce:zelda`
+reviewer that found three issues and had the plan revised**, `triforce:link` on `claude-sonnet-5`
+in its own worktree running tests and committing, a merge, `utils_tests` run before and after by
+zelda itself (683 → 685 tests, the same 52 pre-existing `tzdata` errors), the ledger refusing the
+audit at T0's zero budget, and a report that says plainly "S1–S6 were never examined by an
+adversarial reviewer … I'm not telling you the code is clean." 58 turns. The stream is retained.
+
+One reading of that report matters for the ablation: zelda's "22 tests, OK" are its OWN tests.
+The hidden tests fail. A workflow that verifies against tests it wrote is verifying its reading of
+the spec, which is the same thing arm A does with no workflow at all.
+
+**Two scoring amendments, made after task 01 and before any further cell; neither changed an
+outcome on task 01:**
+
+1. **Arm B is scored from the branch zelda leaves**, in a fresh worktree of it, not from the
+   checkout the harness handed in — zelda's contract puts the merged work on a named branch and the
+   first scoring read a checkout zelda never touched ("EMPTY DIFF" after a complete run). The
+   harness snapshots branches before each cell, scores the newest new one, and deletes it after.
+2. **The commit's test FILES replace the arm's versions** before the labels run, instead of
+   `git apply --3way` of the tests patch. B1 had written its own tests at the same place in the
+   same file and the patch conflicted, which measures test placement, not the implementation.
+   Both arms score identically under both rules on task 01 (`tests.log`, `tests-replace.log` both
+   kept for both cells).
+
+**Harness defects found and fixed on the way to this pair, each of which produced a void cell,
+all kept outside the repo:** relative `--keep`-style path resolved inside a temp dir; Git Bash
+path-converting `/triforce`; `--disallowedTools` swallowing the prompt; `MSYS_NO_PATHCONV` then
+breaking `--plugin-dir` (paths now `cygpath -m`'d); Windows python's CRLF in the guard's read; the
+pre-frozen criteria file left untracked and so absent from zelda's worktree (now committed onto the
+base for arm B); zelda's worktree and branch outliving the cell. Seven attempts to get one B cell
+to run under the enforced plugin state. Each is a line in `ablation.sh` now.
+
 ### Ablation findings 2 and 3: an installed copy shadows `--plugin-dir`, and the baseline was not a baseline (2026-09-16)
 
 **2. `triforce@cookiesncache-marketplace` (0.3.0, installed 2026-09-02 from the author's own

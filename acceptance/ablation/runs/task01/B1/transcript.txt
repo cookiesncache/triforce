@@ -1,0 +1,44 @@
+I'll start by reading my operating contract.
+Operating as zelda. Running preflight.
+Criteria are pre-frozen (C1 + S1–S6) — skipping extraction and confirmation per contract. Taking my worktree.
+Worktree at the right base. Hashing criteria into the ledger.
+Writing the plan.
+Sending the plan to a fresh reviewer (no reasoning of mine carried over).
+Reviewer found three substantive issues. Revising the plan.
+Dispatching link — one isolated executor.
+Merging into my branch.
+Reviewing the merged result against the plan.
+Verifying the tests myself rather than trusting the executor's report.
+Parallel runner crashes on Windows when tracebacks exist. Re-running serially.
+Confirming those 52 errors are pre-existing at the base commit, not caused by this change.
+Baseline 683 tests / 52 errors → after 685 tests / 52 errors. Exactly the two new tests, same pre-existing `tzdata` failures. No regression.
+Now the audit gate. Checking the ledger budget before dispatching anything.
+Tearing down the executor worktree (merged, branch retained).
+Done. Work is on branch **`worktree-zelda-qualname-36523`** (worktree at `.claude/worktrees/zelda-qualname-36523`).
+
+## What landed
+
+`qualname(obj)` in `django/utils/module_loading.py` returns `f"{obj.__module__}.{obj.__qualname__}"`, guarded by `isinstance(obj, type)` or the `(FunctionType, BuiltinFunctionType, MethodType)` triple — the same tuple Django already uses as `FUNCTION_TYPES` at `django/db/migrations/serializer.py:23`. Anything else raises `TypeError` naming the rejected type. Plus tests, a `docs/ref/utils.txt` entry with `.. versionadded:: 6.2`, and a 6.2 release note.
+
+**Merge tally:** 2 commits (1 executor + 1 merge), 111 lines added across 4 files, 0 removed. No existing call site was converted — that was held out of scope deliberately.
+
+## Tests — run by me, not taken on the executor's word
+
+| Command | Result |
+|---|---|
+| `utils_tests.test_module_loading` | 22 tests, OK |
+| `QualnameTests` specifically | `test_classes_and_functions` ok, `test_invalid_values` ok |
+| `utils_tests` (wide, serial) | 685 tests, 52 errors |
+| `utils_tests` at base `10c3ec8` | 683 tests, 52 errors |
+
+Those 52 errors are pre-existing and unrelated: 51 in `test_dateformat`, 1 in `test_timezone`, all `ZoneInfoNotFoundError` from missing `tzdata` in this environment. The before/after delta is exactly +2 tests and +0 errors. flake8 and black pass; **isort was NOT RUN** — it isn't installed here, and `.pre-commit-config.yaml` does run it, so that gate is genuinely unverified.
+
+Two deliberate design calls you may want to overrule: nested classes return `Outer.Inner` and lambdas return `<lambda>`, neither of which `import_string()` can resolve. The helper does not reject them and the docs do not claim the round-trip — but if you wanted `qualname()` to be strictly the inverse of `import_string()`, it isn't.
+
+## Audit: `SKIPPED`
+
+Preflight scored this **T0 (0/100)**, and T0's audit budget is a hard zero — `ledger.sh can … invocations_used` exits non-zero before any reviewer can be dispatched. No ganondorf ran. This was not `--no-audit` and not my choice; it is what the tier buys.
+
+So the criteria roll-call is honest but thin: **C1 is satisfied by construction** — the helper exists, is exported, tested, and documented — and **S1–S6 were never examined by an adversarial reviewer.** T0 is documented as forfeiting real defects; roughly 31% of sub-50-line changes contain findings that this tier does not look for.
+
+I'm not telling you the code is clean. I'm telling you the tests pass, the diff matches the plan a fresh reviewer already pushed back on, and at this tier another round wasn't bought. If you want the code actually audited, that takes a human asking for it.
