@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 260 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 261 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -896,6 +896,52 @@ to withdraw.
 
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
+
+### Ablation finding 1: `/triforce` has NEVER applied zelda's pin — `agent:` is ignored under inline (2026-09-16)
+
+Found by the first arm-B cell, before any counted run. `skills/triforce/SKILL.md` declared
+`context: inline` + `agent: zelda`, and settled decision #1 below said that combination "applies
+the same model pin, prompt, and tool restrictions" as a fork would. It does not. Probed on CLI
+2.1.260 with a throwaway plugin whose agent pins `model: opus` and answers with its own sentinel:
+
+```
+skill frontmatter                                   model that answered   prompt that ran
+context: inline   agent: pinned-agent               sonnet (session default)   the skill body
+context: inline   agent: pinprobe:pinned-agent      sonnet                     the skill body
+context: fork     agent: pinned-agent               sonnet                     the skill body
+context: fork     agent: pinprobe:pinned-agent      OPUS                       the AGENT's
+context: inline   model: opus  (no agent:)          OPUS                       the skill body
+```
+
+(Subagent models read from the on-disk session logs under `~/.claude/projects/`, since a fork's
+messages are not in the parent stream.) So: **under `context: inline` the `agent:` field does
+nothing.** The main thread stays on the session's default model — `claude-sonnet-5` on this
+machine — with only the skill body as instructions, no zelda system prompt and no tool list. Under
+`context: fork` the field works but only with the namespaced name `triforce:zelda`, and a fork
+still costs `AskUserQuestion` and `EnterWorktree`. A skill's own `model:` field IS honoured under
+inline.
+
+**What this means for every number in this file:** none of them measured zelda. Every live audit
+went through `claude -p --agent ganondorf-tN`, whose `--agent` flag does apply the definition, and
+that path is unaffected. But the production entry point — the thing a user types — has been
+running its orchestrator on whatever model the user's session had, unpinned and uncontracted,
+since the skill was written. The `run.sh` check `"/triforce pins zelda via agent:"` was green the
+whole time; it checked that the line existed, not that it did anything.
+
+**Fixed, and the check replaced.** `SKILL.md` now carries `model: opus` itself, drops the inert
+`agent:` line, and tells the main thread to read `${CLAUDE_PLUGIN_ROOT}/agents/zelda.md` first
+(that variable is substituted in skill bodies — probed). Tool restrictions are still NOT applied to
+the main thread by any inline mechanism; that is recorded as a gap, not claimed. The suite now
+checks for the skill's own pin and for the contract path, and fails on any `agent:` line.
+
+**The misconfigured cell, for the record.** Its prompt was also mangled — Git Bash rewrote the
+leading `/triforce` into `C:/Program Files/Git/triforce` (MSYS path conversion; `MSYS_NO_PATHCONV=1`
+fixes it) — yet the sonnet session still found the skill, ran preflight (**T0**, so no audit would
+have run), took a worktree, honoured the pre-frozen criteria file, and then **`WebFetch`ed the
+django ticket** for its spec. The ticket links the real PR. Both arms had web and 13 MCP servers.
+Amendment to the pre-registration, made before any counted B cell: both arms run with
+`--strict-mcp-config` and `WebFetch`/`WebSearch` disallowed. A1 was checked and used neither, so
+it stands.
 
 ### The with/without ablation — pre-registered BEFORE any run (2026-09-16)
 
@@ -1990,10 +2036,15 @@ rule once there is a rate to design it against.
 
 ### Two deviations from the issue's literal text, both deliberate
 
-**1. `context: inline` + `agent: zelda`, not `context: fork`.**
+**1. `context: inline` with the skill's OWN `model: opus`, not `context: fork`.**
 The issue lists `context: fork` as the answer to *"How should `/triforce` pin zelda to Opus?"* — that
-was its only rationale. `agent:` under `context: inline` applies the same model pin, prompt, and tool
-restrictions, and fork would cost two things:
+was its only rationale. **This entry used to say `agent: zelda` under `context: inline` "applies the
+same model pin, prompt, and tool restrictions". Measured false on 2026-09-16: under inline the CLI
+ignores `agent:` entirely, and `/triforce` ran its orchestrator on the session's default model with
+no contract for as long as it existed.** See "Ablation finding 1" above. The pin is now the skill's
+own `model:` field, which inline honours; the contract is loaded by path; tool restrictions are not
+applied to the main thread and this file no longer claims they are. Inline is still right, because
+fork would cost two things:
 
 - **Mid-process user input.** The CLI's own authoring guidance, read from the binary:
   *"Only set `context: fork` for self-contained skills that don't need mid-process user input."*
@@ -2136,7 +2187,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **260** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **261** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its

@@ -1,0 +1,138 @@
+diff --git a/django/utils/module_loading.py b/django/utils/module_loading.py
+index 70f26d7..8bbfc3a 100644
+--- a/django/utils/module_loading.py
++++ b/django/utils/module_loading.py
+@@ -48,6 +48,19 @@ def import_string(dotted_path):
+         return import_target
+ 
+ 
++def qualname(obj):
++    """
++    Return the fully qualified dotted path of a class or function, suitable
++    for use with import_string(). Raise TypeError for other objects.
++    """
++    try:
++        return f"{obj.__module__}.{obj.__qualname__}"
++    except AttributeError:
++        raise TypeError(
++            f"qualname() expects a class or function, got {type(obj).__name__!r}."
++        )
++
++
+ def autodiscover_modules(*args, **kwargs):
+     """
+     Auto-discover INSTALLED_APPS modules and fail silently when
+diff --git a/docs/ref/utils.txt b/docs/ref/utils.txt
+index 08a264c..810496c 100644
+--- a/docs/ref/utils.txt
++++ b/docs/ref/utils.txt
+@@ -842,6 +842,19 @@ Functions for working with Python modules.
+         Support for importing modules was added, along with deterministic
+         handling for ambiguous cases.
+ 
++.. function:: qualname(obj)
++
++    .. versionadded:: 6.2
++
++    Returns the fully qualified dotted path of a class or function, suitable
++    for use with :func:`import_string`. Raises :exc:`TypeError` for other
++    objects. For example::
++
++        >>> from django.utils.module_loading import qualname
++        >>> from django.core.exceptions import ValidationError
++        >>> qualname(ValidationError)
++        'django.core.exceptions.ValidationError'
++
+ ``django.utils.safestring``
+ ===========================
+ 
+diff --git a/docs/releases/6.2.txt b/docs/releases/6.2.txt
+index 4631c9d..b4340c0 100644
+--- a/docs/releases/6.2.txt
++++ b/docs/releases/6.2.txt
+@@ -258,7 +258,9 @@ Utilities
+   top-level modules did not work, and submodules only worked if already
+   imported.
+ 
+-* ...
++* The new :func:`~django.utils.module_loading.qualname` function returns the
++  fully qualified dotted path of a class or function, suitable for use with
++  :func:`~django.utils.module_loading.import_string`.
+ 
+ Validators
+ ~~~~~~~~~~
+diff --git a/tests/utils_tests/test_module_loading.py b/tests/utils_tests/test_module_loading.py
+index 7752da1..72110e1 100644
+--- a/tests/utils_tests/test_module_loading.py
++++ b/tests/utils_tests/test_module_loading.py
+@@ -10,6 +10,7 @@ from django.utils.module_loading import (
+     autodiscover_modules,
+     import_string,
+     module_has_submodule,
++    qualname,
+ )
+ 
+ 
+@@ -170,6 +171,62 @@ class ModuleImportTests(SimpleTestCase):
+             import_string("")
+ 
+ 
++class QualnameTests(SimpleTestCase):
++    def test_classes_and_functions(self):
++        class Nested:
++            def method(self):
++                pass
++
++        def nested_function():
++            pass
++
++        tests = [
++            (import_string, "django.utils.module_loading.import_string"),
++            (qualname, "django.utils.module_loading.qualname"),
++            (SimpleTestCase, "django.test.testcases.SimpleTestCase"),
++            (
++                SimpleTestCase.assertRaisesMessage,
++                "django.test.testcases.SimpleTestCase.assertRaisesMessage",
++            ),
++            (QualnameTests, "utils_tests.test_module_loading.QualnameTests"),
++            (
++                Nested,
++                "utils_tests.test_module_loading."
++                "QualnameTests.test_classes_and_functions.<locals>.Nested",
++            ),
++            (
++                Nested.method,
++                "utils_tests.test_module_loading."
++                "QualnameTests.test_classes_and_functions.<locals>.Nested.method",
++            ),
++            (
++                nested_function,
++                "utils_tests.test_module_loading."
++                "QualnameTests.test_classes_and_functions.<locals>.nested_function",
++            ),
++            (int, "builtins.int"),
++            (len, "builtins.len"),
++        ]
++        for obj, expected in tests:
++            with self.subTest(obj=obj):
++                self.assertEqual(qualname(obj), expected)
++        # Importable paths round-trip.
++        for obj in [import_string, SimpleTestCase, QualnameTests]:
++            with self.subTest(obj=obj):
++                self.assertIs(import_string(qualname(obj)), obj)
++
++    def test_invalid_values(self):
++        tests = [None, "", "django.test.SimpleTestCase", 1, [], object(), self]
++        for value in tests:
++            with self.subTest(value=value):
++                msg = (
++                    "qualname() expects a class or function, got "
++                    f"{type(value).__name__!r}."
++                )
++                with self.assertRaisesMessage(TypeError, msg):
++                    qualname(value)
++
++
+ @modify_settings(INSTALLED_APPS={"append": "utils_tests.test_module"})
+ class AutodiscoverModulesTestCase(SimpleTestCase):
+     def tearDown(self):

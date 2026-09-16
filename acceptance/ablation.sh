@@ -18,6 +18,10 @@
 #   B  triforce   claude -p --plugin-dir <this repo> "/triforce <task>", criteria
 #                 pre-frozen (C1 = commit subject, plus S1-S6) so no
 #                 AskUserQuestion is needed -- headless has none.
+#   Both arms: --strict-mcp-config (no MCP servers) and WebFetch/WebSearch
+#   disallowed. The task names a django ticket, the ticket links the real PR,
+#   and the first B cell fetched it. Hidden tests are not hidden from a model
+#   that can read the answer.
 #
 # METRICS per run, all retained under --out/<task>/<arm><rep>/:
 #   pass        the commit's own tests/ hunks applied on top of the arm's output,
@@ -151,8 +155,9 @@ run_cell() {   # run_cell <task> <arm> <rep>
   t0=$(date +%s)
   case "$arm" in
     A)
-      ( cd "$WT" && timeout "${ABL_TIMEOUT:-2400}" claude -p --model opus --effort high \
+      ( cd "$WT" && MSYS_NO_PATHCONV=1 timeout "${ABL_TIMEOUT:-2400}" claude -p --model opus --effort high \
           --output-format stream-json --verbose --dangerously-skip-permissions \
+          --strict-mcp-config --disallowedTools "WebFetch,WebSearch" \
           "$prompt" > "$R/stream.jsonl" 2> "$R/stderr.txt" ); rc=$? ;;
     B)
       mkdir -p "$WT/.triforce"
@@ -166,8 +171,12 @@ run_cell() {   # run_cell <task> <arm> <rep>
         printf 'S6\tconcurrency or ordering hazard\n'
       } > "$WT/.triforce/criteria.tsv"
       cp "$WT/.triforce/criteria.tsv" "$R/criteria.tsv"
-      ( cd "$WT" && TRIFORCE_CRITERIA_FILE="$WT/.triforce/criteria.tsv" timeout "${ABL_TIMEOUT:-3600}" claude -p --plugin-dir "$ROOT" \
+      # MSYS_NO_PATHCONV: Git Bash rewrites an argument that starts with "/" into
+      # a Windows path, so "/triforce ..." reached the CLI as "C:/Program
+      # Files/Git/triforce ..." and the first B cell ran with no skill at all.
+      ( cd "$WT" && MSYS_NO_PATHCONV=1 TRIFORCE_CRITERIA_FILE="$WT/.triforce/criteria.tsv" timeout "${ABL_TIMEOUT:-3600}" claude -p --plugin-dir "$ROOT" \
           --output-format stream-json --verbose --dangerously-skip-permissions \
+          --strict-mcp-config --disallowedTools "WebFetch,WebSearch" \
           "/triforce $prompt" > "$R/stream.jsonl" 2> "$R/stderr.txt" ); rc=$? ;;
     *) echo "ablation: unknown arm $arm" >&2; return 2 ;;
   esac

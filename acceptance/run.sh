@@ -112,9 +112,22 @@ done
 if grep -hE "^model:" agents/*.md | grep -q "inherit"; then
   sbad "no agent resolves to 'inherit'"; else sok "no agent resolves to 'inherit'"; fi
 
-# the skill entry point
-if grep -q "^agent: zelda" skills/triforce/SKILL.md; then
-  sok "/triforce pins zelda via agent:"; else sbad "/triforce pins zelda via agent:"; fi
+# the skill entry point. This used to check for `agent: zelda` and was green
+# for the life of the project while that line did nothing: under context:
+# inline the CLI ignores agent: (probed 2026-09-16, 2.1.260 -- the session
+# stayed on its default model and ran the skill body alone). The pin the design
+# depends on is the skill's OWN model: field, and the contract is loaded by
+# path, so those are what is checked now.
+if grep -q "^model: opus" skills/triforce/SKILL.md && ! grep -q "^agent:" skills/triforce/SKILL.md; then
+  sok "/triforce carries model: opus itself (inline ignores agent:, so an agent: line here would be a false pin)"
+else
+  sbad "/triforce does not pin its own model, or still carries an agent: line that inline ignores"
+fi
+if grep -qF '${CLAUDE_PLUGIN_ROOT}/agents/zelda.md' skills/triforce/SKILL.md; then
+  sok "/triforce tells the main thread where zelda's contract is, by plugin-root path"
+else
+  sbad "/triforce does not name zelda's contract by path; the main thread would have to hunt for it"
+fi
 
 # ganondorf tier variants stay in sync with the shared contract
 if bash acceptance/gen-ganondorf.sh --check >/dev/null 2>&1; then

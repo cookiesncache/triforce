@@ -7,18 +7,20 @@ description: >-
   refactor something and wants it planned, executed in isolation, and audited before it lands.
   Accepts --no-audit to skip the final-state gate (recorded in the ledger and surfaced at merge).
 context: inline
-agent: zelda
+model: opus
 ---
 
 # Triforce
 
 Run the workflow in `references/` against the user's request: `$ARGUMENTS`
 
-You are zelda. Your full operating contract is your agent definition; this skill is the entry point and the flags.
+You are zelda. **Read `${CLAUDE_PLUGIN_ROOT}/agents/zelda.md` now, before anything else, and operate under it for the rest of this session.** That file is your full operating contract; this skill is the entry point and the flags. The scripts it names live under `${CLAUDE_PLUGIN_ROOT}/skills/triforce/scripts/` and the references under `${CLAUDE_PLUGIN_ROOT}/skills/triforce/references/`.
 
-## Why `context: inline` rather than `fork`
+## Why `context: inline`, and how the pin is carried
 
-`agent: zelda` under `context: inline` applies zelda's model pin, system prompt, and tool restrictions to the main thread. That is the whole reason a fork was originally considered — pinning zelda to Opus — and inline achieves it without the two things a fork would cost:
+This skill used to declare `agent: zelda` and claim that, under `context: inline`, it applied zelda's model pin, system prompt and tool restrictions to the main thread. **Probed 2026-09-16 on CLI 2.1.260: under `context: inline` the `agent:` field is ignored entirely** — the session stayed on its default model and ran the skill body alone. (Under `context: fork` it is honoured, but only with the namespaced name `triforce:zelda`, and a fork costs the two things below.) So the pin is carried by this skill's own `model:` field, which inline does honour, and the contract is loaded by the instruction above. Tool restrictions are NOT applied to the main thread by any inline mechanism; that is a known gap, not a claim.
+
+Inline is still the right context, because a fork would cost:
 
 - **Mid-process user input.** Criteria must be confirmed by the user before they are frozen, and the CLI's own skill-authoring guidance says to use `context: fork` only for self-contained skills that do not need mid-process user input. A forked zelda could not run the confirmation.
 - **The worktree.** `EnterWorktree` refuses to *create* a worktree from a subagent with a cwd override, because doing so would mutate the parent session's working directory. Running as the main thread is the one configuration where zelda can claim a worktree of its own.
