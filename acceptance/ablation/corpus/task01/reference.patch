@@ -1,0 +1,172 @@
+diff --git a/django/core/mail/backends/base.py b/django/core/mail/backends/base.py
+index 1d42c44..f62a6c5 100644
+--- a/django/core/mail/backends/base.py
++++ b/django/core/mail/backends/base.py
+@@ -2,6 +2,7 @@
+ 
+ from django.core.mail import InvalidMailer
+ from django.utils.deprecation import RemovedInDjango2028Warning, warn_about_external_use
++from django.utils.module_loading import qualname
+ 
+ # RemovedInDjango2028Warning.
+ _NOT_PROVIDED = object()
+@@ -57,7 +58,7 @@ class BaseEmailBackend:
+                 # backend or a super.__init__() call from a custom subclass).
+                 # Use something more precise than self.__class__.__name__,
+                 # which is often just "EmailBackend".
+-                class_name = f"{type(self).__module__}.{type(self).__qualname__}"
++                class_name = qualname(type(self))
+                 warn_about_external_use(
+                     f"{class_name}.__init__() does not support {kwarg_names}. "
+                     "In Django 2028, BaseEmailBackend will raise a TypeError "
+diff --git a/django/db/migrations/serializer.py b/django/db/migrations/serializer.py
+index 17dc95f..8d361e0 100644
+--- a/django/db/migrations/serializer.py
++++ b/django/db/migrations/serializer.py
+@@ -18,6 +18,7 @@ from django.db.migrations.operations.base import Operation
+ from django.db.migrations.utils import COMPILED_REGEX_TYPE, RegexObject
+ from django.db.models.deletion import DatabaseOnDelete
+ from django.utils.functional import LazyObject, Promise
++from django.utils.module_loading import qualname
+ from django.utils.version import get_docs_version
+ 
+ FUNCTION_TYPES = (types.FunctionType, types.BuiltinFunctionType, types.MethodType)
+@@ -202,14 +203,15 @@ class FunctionTypeSerializer(BaseSerializer):
+ 
+         module_name = self.value.__module__
+ 
+-        if "<" not in self.value.__qualname__:  # Qualname can include <locals>
+-            return "%s.%s" % (module_name, self.value.__qualname__), {
+-                "import %s" % self.value.__module__
+-            }
++        try:
++            name = qualname(self.value)
++        except ValueError as e:
++            raise ValueError(
++                "Could not find function %s in %s.\n"
++                % (self.value.__name__, module_name)
++            ) from e
+ 
+-        raise ValueError(
+-            "Could not find function %s in %s.\n" % (self.value.__name__, module_name)
+-        )
++        return name, {"import %s" % module_name}
+ 
+ 
+ class FunctoolsPartialSerializer(BaseSerializer):
+@@ -342,9 +344,7 @@ class TypeSerializer(BaseSerializer):
+             if module == builtins.__name__:
+                 return self.value.__name__, set()
+             else:
+-                return "%s.%s" % (module, self.value.__qualname__), {
+-                    "import %s" % module
+-                }
++                return qualname(self.value), {"import %s" % module}
+ 
+ 
+ class UUIDSerializer(BaseSerializer):
+diff --git a/django/tasks/backends/immediate.py b/django/tasks/backends/immediate.py
+index 2e15485..2d7f029 100644
+--- a/django/tasks/backends/immediate.py
++++ b/django/tasks/backends/immediate.py
+@@ -6,6 +6,7 @@ from django.tasks.signals import task_enqueued, task_finished, task_started
+ from django.utils import timezone
+ from django.utils.crypto import get_random_string
+ from django.utils.json import normalize_json
++from django.utils.module_loading import qualname
+ 
+ from .base import BaseTaskBackend
+ 
+@@ -59,9 +60,7 @@ class ImmediateBackend(BaseTaskBackend):
+             exception_type = type(e)
+             task_result.errors.append(
+                 TaskError(
+-                    exception_class_path=(
+-                        f"{exception_type.__module__}.{exception_type.__qualname__}"
+-                    ),
++                    exception_class_path=qualname(exception_type),
+                     traceback="".join(format_exception(e)),
+                 )
+             )
+diff --git a/django/tasks/base.py b/django/tasks/base.py
+index b5c960a..a344126 100644
+--- a/django/tasks/base.py
++++ b/django/tasks/base.py
+@@ -8,7 +8,7 @@ from asgiref.sync import async_to_sync, sync_to_async
+ 
+ from django.db.models.enums import TextChoices
+ from django.utils.json import normalize_json
+-from django.utils.module_loading import import_string
++from django.utils.module_loading import import_string, qualname
+ from django.utils.translation import pgettext_lazy
+ 
+ from .exceptions import TaskResultMismatch
+@@ -145,7 +145,7 @@ class Task:
+ 
+     @property
+     def module_path(self):
+-        return f"{self.func.__module__}.{self.func.__qualname__}"
++        return qualname(self.func)
+ 
+ 
+ def task(
+diff --git a/django/urls/resolvers.py b/django/urls/resolvers.py
+index 6c681f9..8a4fcb7 100644
+--- a/django/urls/resolvers.py
++++ b/django/urls/resolvers.py
+@@ -23,6 +23,7 @@ from django.core.exceptions import ImproperlyConfigured
+ from django.utils.datastructures import MultiValueDict
+ from django.utils.functional import cached_property
+ from django.utils.http import RFC3986_SUBDELIMS, escape_leading_slashes
++from django.utils.module_loading import qualname
+ from django.utils.regex_helper import _lazy_re_compile, normalize
+ from django.utils.translation import get_language
+ 
+@@ -495,9 +496,10 @@ class URLPattern:
+             callback = callback.func
+         if hasattr(callback, "view_class"):
+             callback = callback.view_class
+-        elif not hasattr(callback, "__name__"):
++        try:
++            return qualname(callback)
++        except ValueError:
+             return callback.__module__ + "." + callback.__class__.__name__
+-        return callback.__module__ + "." + callback.__qualname__
+ 
+ 
+ class URLResolver:
+diff --git a/django/utils/module_loading.py b/django/utils/module_loading.py
+index 70f26d7..cf00509 100644
+--- a/django/utils/module_loading.py
++++ b/django/utils/module_loading.py
+@@ -1,6 +1,7 @@
+ import copy
+ import os
+ import sys
++import types
+ from importlib import import_module
+ from importlib.util import find_spec as importlib_find
+ 
+@@ -118,3 +119,22 @@ def module_dir(module):
+         if filename is not None:
+             return os.path.dirname(filename)
+     raise ValueError("Cannot determine directory containing %s" % module)
++
++
++def qualname(value):
++    """
++    Return the fully qualified name (dotted module path) for a class, function,
++    type, or module (e.g. 'django.db.models.Model').
++    """
++    if isinstance(value, types.ModuleType):
++        return value.__name__
++    if not hasattr(value, "__module__") or value.__module__ is None:
++        msg = f"Cannot determine module path for {value!r}: no __module__ attribute."
++        raise ValueError(msg)
++    if not hasattr(value, "__qualname__"):
++        msg = f"Cannot determine module path for {value!r}: no __qualname__ attribute."
++        raise ValueError(msg)
++    if "<" in value.__qualname__:
++        msg = f"Cannot determine module path for {value!r}: local or anonymous object."
++        raise ValueError(msg)
++    return f"{value.__module__}.{value.__qualname__}"

@@ -51,6 +51,11 @@ Confirm with `AskUserQuestion` before freezing:
 **Truncating the list silently shrinks the blocking budget**, which is the same failure as writing
 the criteria yourself, arriving by a quieter route.
 
+**Pre-frozen.** A non-empty frozen file already present when zelda starts is taken as confirmed and
+is not re-extracted, re-confirmed or edited. Headless invocation (`claude -p`) has no
+`AskUserQuestion`, so this is how a harness hands zelda its criteria; interactively it never
+happens unless the user wrote the file first, which is the same thing.
+
 ## The frozen file
 
 One criterion per line, `<id><TAB><verbatim text>`, written to `.triforce/criteria.tsv`:

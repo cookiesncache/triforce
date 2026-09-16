@@ -1,0 +1,73 @@
+diff --git a/tests/composite_pk/test_order_by.py b/tests/composite_pk/test_order_by.py
+index f17d6b5..9dc29ae 100644
+--- a/tests/composite_pk/test_order_by.py
++++ b/tests/composite_pk/test_order_by.py
+@@ -70,3 +70,9 @@ class CompositePKOrderByTests(TestCase):
+             Comment.objects.order_by("-pk"),
+             Comment.objects.order_by(F("pk").desc(nulls_last=True)),
+         )
++
++    def test_alias_totally_ordered(self):
++        self.assertIs(
++            Comment.objects.alias(my_pk=F("pk")).order_by("my_pk").totally_ordered,
++            True,
++        )
+diff --git a/tests/ordering/models.py b/tests/ordering/models.py
+index a4e4b82..3d7bd5d 100644
+--- a/tests/ordering/models.py
++++ b/tests/ordering/models.py
+@@ -85,10 +85,12 @@ class OrderedByExpressionGrandChild(models.Model):
+ 
+ class BarcodedArticle(models.Model):
+     rank = models.IntegerField(unique=True, null=True)
++    unique_rank = models.IntegerField(unique=True)
+     headline = models.CharField(max_length=100)
+     slug = models.CharField(max_length=100, default="slug")
+     pub_date = models.DateField(null=True)
+     barcode = models.CharField(max_length=30, default="bar")
++    parent = models.ForeignKey("self", models.SET_NULL, null=True)
+ 
+     class Meta:
+         required_db_features = {"supports_partial_indexes"}
+diff --git a/tests/ordering/tests.py b/tests/ordering/tests.py
+index c4ffc7a..1ab332f 100644
+--- a/tests/ordering/tests.py
++++ b/tests/ordering/tests.py
+@@ -726,6 +726,37 @@ class TotallyOrderedTests(SimpleTestCase):
+         self.assertIs(BarcodedArticle.objects.order_by("rank").totally_ordered, False)
+         self.assertIs(BarcodedArticle.objects.order_by("barcode").totally_ordered, True)
+ 
++    def test_alias(self):
++        self.assertIs(
++            Author.objects.alias(my_pk=F("pk")).order_by("my_pk").totally_ordered, True
++        )
++        self.assertIs(
++            Author.objects.alias(my_pk=F("name")).order_by("my_pk").totally_ordered,
++            False,
++        )
++
++    def test_alias_relation(self):
++        self.assertIs(
++            Author.objects.alias(my_editor=F("editor__pk"))
++            .order_by("my_editor")
++            .totally_ordered,
++            False,
++        )
++
++    def test_alias_self_relation(self):
++        self.assertIs(
++            BarcodedArticle.objects.alias(my_unique_rank=F("unique_rank"))
++            .order_by("my_unique_rank")
++            .totally_ordered,
++            True,
++        )
++        self.assertIs(
++            BarcodedArticle.objects.alias(parent_unique_rank=F("parent__unique_rank"))
++            .order_by("parent_unique_rank")
++            .totally_ordered,
++            False,
++        )
++
+     def test_totally_ordered_none(self):
+         qs = Author.objects.order_by().none()
+         self.assertIs(qs.totally_ordered, False)

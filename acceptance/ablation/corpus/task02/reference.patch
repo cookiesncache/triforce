@@ -1,0 +1,134 @@
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index 2d3f520..bc881fc 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -47,8 +47,8 @@ from django.db.models.utils import (
+ )
+ from django.utils import timezone
+ from django.utils.deprecation import (
+-    RemovedInDjango71Warning,
+     RemovedInDjango2028Warning,
++    RemovedInDjango2029Warning,
+     warn_about_external_use,
+ )
+ from django.utils.functional import cached_property
+@@ -632,7 +632,7 @@ class QuerySet(AltersData):
+         """
+         if chunk_size is None:
+             if self._prefetch_related_lookups:
+-                # RemovedInDjango71Warning: Replace the warning with:
++                # RemovedInDjango2029Warning: Replace the warning with:
+                 # raise ValueError(
+                 #     "chunk_size must be provided when using "
+                 #     "QuerySet.aiterator() after prefetch_related()."
+@@ -640,11 +640,11 @@ class QuerySet(AltersData):
+                 warnings.warn(
+                     "Using QuerySet.aiterator() after prefetch_related() without "
+                     "providing a chunk_size is deprecated and will raise a "
+-                    "ValueError in Django 7.1.",
+-                    category=RemovedInDjango71Warning,
++                    "ValueError in Django 2029.",
++                    category=RemovedInDjango2029Warning,
+                     skip_file_prefixes=django_file_prefixes(),
+                 )
+-                # RemovedInDjango71Warning: When the deprecation ends, remove.
++                # RemovedInDjango2029Warning: Remove when the deprecation ends.
+                 chunk_size = 2000
+         elif chunk_size <= 0:
+             raise ValueError("Chunk size must be strictly positive.")
+diff --git a/django/http/response.py b/django/http/response.py
+index c4ed512..b1d70b4 100644
+--- a/django/http/response.py
++++ b/django/http/response.py
+@@ -20,7 +20,7 @@ from django.core.serializers.json import DjangoJSONEncoder
+ from django.http.cookie import SimpleCookie
+ from django.utils import timezone
+ from django.utils.datastructures import CaseInsensitiveMapping
+-from django.utils.deprecation import RemovedInDjango71Warning
++from django.utils.deprecation import RemovedInDjango2029Warning
+ from django.utils.encoding import iri_to_uri
+ from django.utils.functional import cached_property
+ from django.utils.http import (
+@@ -757,22 +757,22 @@ class JsonResponse(HttpResponse):
+         self,
+         data,
+         encoder=DjangoJSONEncoder,
+-        # RemovedInDjango71Warning: Remove the safe parameter from here and
++        # RemovedInDjango2029Warning: Remove the safe parameter from here and
+         # the docstring.
+         safe=None,
+         json_dumps_params=None,
+         **kwargs,
+     ):
+-        # RemovedInDjango71Warning.
++        # RemovedInDjango2029Warning.
+         if safe is None:
+             safe = False
+         else:
+             warnings.warn(
+                 "The safe parameter is deprecated.",
+-                category=RemovedInDjango71Warning,
++                category=RemovedInDjango2029Warning,
+                 skip_file_prefixes=django_file_prefixes(),
+             )
+-        # RemovedInDjango71Warning.
++        # RemovedInDjango2029Warning.
+         if safe and not isinstance(data, dict):
+             raise TypeError(
+                 "In order to allow non-dict objects to be serialized set the "
+diff --git a/django/utils/deprecation.py b/django/utils/deprecation.py
+index 48e2a9c..63fbe50 100644
+--- a/django/utils/deprecation.py
++++ b/django/utils/deprecation.py
+@@ -14,12 +14,12 @@ class RemovedInDjango2028Warning(DeprecationWarning):
+     pass
+ 
+ 
+-class RemovedInDjango71Warning(PendingDeprecationWarning):
++class RemovedInDjango2029Warning(PendingDeprecationWarning):
+     pass
+ 
+ 
+ RemovedInNextVersionWarning = RemovedInDjango2028Warning
+-RemovedAfterNextVersionWarning = RemovedInDjango71Warning
++RemovedAfterNextVersionWarning = RemovedInDjango2029Warning
+ 
+ 
+ def __getattr__(name):
+@@ -27,7 +27,7 @@ def __getattr__(name):
+         warnings.warn(
+             "Importing MiddlewareMixin from django.utils.deprecation is deprecated. "
+             "Import from django.middleware.MiddlewareMixin instead.",
+-            RemovedInDjango71Warning,
++            RemovedInDjango2029Warning,
+             stacklevel=2,
+         )
+         return _MiddlewareMixin
+diff --git a/docs/internals/deprecation.txt b/docs/internals/deprecation.txt
+index fc63c0d..12e45ba 100644
+--- a/docs/internals/deprecation.txt
++++ b/docs/internals/deprecation.txt
+@@ -7,10 +7,10 @@ in a backward incompatible way, following their deprecation, as per the
+ :ref:`deprecation policy <internal-release-deprecation-policy>`. More details
+ about each item can often be found in the release notes of two versions prior.
+ 
+-.. _deprecation-removed-in-7.1:
++.. _deprecation-removed-in-2029:
+ 
+-7.1
+----
++2029
++----
+ 
+ See the :ref:`Django 6.2 release notes <deprecated-features-6.2>` for more
+ details on these changes.
+diff --git a/docs/releases/6.2.txt b/docs/releases/6.2.txt
+index e93d4f2..f366db6 100644
+--- a/docs/releases/6.2.txt
++++ b/docs/releases/6.2.txt
+@@ -353,4 +353,4 @@ Miscellaneous
+ * Calling :meth:`.QuerySet.aiterator` after ``prefetch_related()`` without
+   providing a ``chunk_size`` is deprecated. It currently falls back to a
+   ``chunk_size`` of 2000, but a ``ValueError`` will be raised in
+-  Django 7.1.
++  Django 2029.

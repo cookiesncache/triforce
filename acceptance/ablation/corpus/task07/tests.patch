@@ -1,0 +1,157 @@
+diff --git a/tests/constraints/models.py b/tests/constraints/models.py
+index 41b8276..86e6dba 100644
+--- a/tests/constraints/models.py
++++ b/tests/constraints/models.py
+@@ -1,5 +1,5 @@
+ from django.db import models
+-from django.db.models.functions import Coalesce, Lower
++from django.db.models.functions import Coalesce, Lower, Now
+ 
+ 
+ class Product(models.Model):
+@@ -175,3 +175,11 @@ class ModelWithDatabaseDefault(models.Model):
+     field_with_db_default = models.CharField(
+         max_length=255, db_default=models.Value("field_with_db_default")
+     )
++
++
++class ModelWithDatabaseDefaultExpression(models.Model):
++    field = models.CharField(max_length=255)
++    field_with_db_default_expression = models.DateTimeField(db_default=Now())
++
++    class Meta:
++        required_db_features = {"supports_expression_defaults"}
+diff --git a/tests/constraints/tests.py b/tests/constraints/tests.py
+index b6e7c88..fb3ed69 100644
+--- a/tests/constraints/tests.py
++++ b/tests/constraints/tests.py
+@@ -16,6 +16,7 @@ from .models import (
+     GeneratedFieldVirtualProduct,
+     JSONFieldModel,
+     ModelWithDatabaseDefault,
++    ModelWithDatabaseDefaultExpression,
+     Product,
+     UniqueConstraintConditionProduct,
+     UniqueConstraintDeferrable,
+@@ -1503,3 +1504,29 @@ class UniqueConstraintTests(TestCase):
+                 Upper("field_with_db_default"),
+                 name="unique_field_with_db_default_expression",
+             ).validate(ModelWithDatabaseDefault, ModelWithDatabaseDefault())
++
++    @skipUnlessDBFeature("supports_expression_defaults")
++    def test_database_default_expression(self):
++        """
++        A field whose db_default is a non-constant expression cannot be
++        validated before the value is generated on INSERT, so the constraint
++        check is skipped.
++        """
++        ModelWithDatabaseDefaultExpression.objects.create()
++        with self.assertNumQueries(0):
++            models.UniqueConstraint(
++                fields=["field_with_db_default_expression"],
++                name="unique_field_with_db_default_expression_field",
++            ).validate(
++                ModelWithDatabaseDefaultExpression, ModelWithDatabaseDefaultExpression()
++            )
++        # A multi-field constraint containing such a field is skipped
++        # entirely, even if the other fields have concrete values.
++        with self.assertNumQueries(0):
++            models.UniqueConstraint(
++                fields=["field", "field_with_db_default_expression"],
++                name="unique_field_and_db_default_expression_field",
++            ).validate(
++                ModelWithDatabaseDefaultExpression,
++                ModelWithDatabaseDefaultExpression(field="value"),
++            )
+diff --git a/tests/validation/models.py b/tests/validation/models.py
+index ed88750..3fc45cb 100644
+--- a/tests/validation/models.py
++++ b/tests/validation/models.py
+@@ -2,7 +2,7 @@ from datetime import datetime
+ 
+ from django.core.exceptions import ValidationError
+ from django.db import models
+-from django.db.models.functions import Lower
++from django.db.models.functions import Lower, Now
+ 
+ 
+ def validate_answer_to_universe(value):
+@@ -52,6 +52,22 @@ class UniqueFieldsModel(models.Model):
+     non_unique_field = models.IntegerField()
+ 
+ 
++class UniqueDbDefaultExpressionModel(models.Model):
++    unique_created = models.DateTimeField(unique=True, db_default=Now())
++
++    class Meta:
++        required_db_features = {"supports_expression_defaults"}
++
++
++class UniqueTogetherDbDefaultExpressionModel(models.Model):
++    number = models.IntegerField()
++    created = models.DateTimeField(db_default=Now())
++
++    class Meta:
++        required_db_features = {"supports_expression_defaults"}
++        unique_together = [("number", "created")]
++
++
+ class CustomPKModel(models.Model):
+     my_pk_field = models.CharField(max_length=100, primary_key=True)
+ 
+diff --git a/tests/validation/test_unique.py b/tests/validation/test_unique.py
+index 36ee6e9..6eb39ad 100644
+--- a/tests/validation/test_unique.py
++++ b/tests/validation/test_unique.py
+@@ -4,17 +4,19 @@ import unittest
+ from django.apps.registry import Apps
+ from django.core.exceptions import ValidationError
+ from django.db import models
+-from django.test import TestCase
++from django.test import TestCase, skipUnlessDBFeature
+ 
+ from .models import (
+     CustomPKModel,
+     FlexibleDatePost,
+     ModelToValidate,
+     Post,
++    UniqueDbDefaultExpressionModel,
+     UniqueErrorsModel,
+     UniqueFieldsModel,
+     UniqueForDateModel,
+     UniqueFuncConstraintModel,
++    UniqueTogetherDbDefaultExpressionModel,
+     UniqueTogetherModel,
+ )
+ 
+@@ -160,6 +162,30 @@ class PerformUniqueChecksTest(TestCase):
+             },
+         )
+ 
++    @skipUnlessDBFeature("supports_expression_defaults")
++    def test_unique_db_default_expression(self):
++        """
++        A unique field whose db_default is a non-constant expression cannot
++        be validated before the value is generated on INSERT, so the unique
++        check is skipped (uniqueness is enforced by the database constraint).
++        """
++        UniqueDbDefaultExpressionModel.objects.create()
++        m = UniqueDbDefaultExpressionModel()
++        with self.assertNumQueries(0):
++            m.full_clean()
++
++    @skipUnlessDBFeature("supports_expression_defaults")
++    def test_unique_together_db_default_expression(self):
++        """
++        A unique check containing a field with a non-constant db_default is
++        skipped entirely; a partial lookup on the remaining fields would be
++        incorrect.
++        """
++        UniqueTogetherDbDefaultExpressionModel.objects.create(number=1)
++        m = UniqueTogetherDbDefaultExpressionModel(number=1)
++        with self.assertNumQueries(0):
++            m.full_clean()
++
+     def test_unique_for_date(self):
+         Post.objects.create(
+             title="Django 1.0 is released",

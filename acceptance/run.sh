@@ -1389,6 +1389,44 @@ else
     sok "every live-cases probe dies at a guard, before the auth probe (the suite stays offline)"
   fi
 
+  # ---- the with/without ablation: guards that cost nothing to check ---------
+  # The first measurement against the BASELINE. Offline, three things must hold
+  # or its numbers mean nothing: the answer key never enters an arm's worktree;
+  # a cell is counted only when the arm actually changed something; and the
+  # pre-frozen criteria path zelda needs to run headlessly is documented in the
+  # production prompt, not only in the harness.
+  if grep -qF '[ ! -e "$WT/reference.patch" ] && [ ! -e "$WT/tests.patch" ]' acceptance/ablation.sh \
+     && grep -qF "':!tests/' > \"\$T/reference.patch\"" acceptance/ablation-corpus.sh; then
+    sok "ablation: the reference and tests patches are drawn beside the corpus and asserted absent from every arm's worktree"
+  else
+    sbad "ablation: an arm could see the answer key, or the key is not drawn"
+  fi
+  if grep -qF 'EMPTY DIFF: the arm changed nothing' acceptance/ablation.sh \
+     && grep -qF 'if [ "$completed" = 1 ]; then' acceptance/ablation.sh; then
+    sok "ablation: an arm that changed nothing is not completed, and hidden tests run only on a completed cell"
+  else
+    sbad "ablation: an empty diff could be scored -- the hidden tests would pass on a no-op arm only if the corpus were broken, and fail otherwise, and neither is a measurement"
+  fi
+  if grep -qF '**Pre-frozen criteria.**' agents/zelda.md && grep -qF 'TRIFORCE_CRITERIA_FILE' agents/zelda.md \
+     && grep -qF 'TRIFORCE_CRITERIA_FILE=' acceptance/ablation.sh; then
+    sok "ablation: zelda documents the pre-frozen criteria path the headless arm depends on"
+  else
+    sbad "ablation: arm B pre-freezes criteria but zelda's contract does not say what to do with a pre-frozen file"
+  fi
+  # The draw's dynamic criterion must be the hidden-acceptance step, not the
+  # literal wording that rejected 11 of 13 real fixes.
+  if grep -qF 'git -C "$REPO" diff "$sha^" "$sha" -- tests/ | git -C "$WT" apply --3way' acceptance/ablation-corpus.sh; then
+    sok "ablation: the draw applies the commit's tests on sha^ before requiring a failure (the tests that exercise a fix are added by it)"
+  else
+    sbad "ablation: the draw runs the OLD tests at sha^, which pass for almost every fix"
+  fi
+  if grep -qF 'probe=$(timeout 90 claude -p "Reply with exactly: READY" --model haiku' acceptance/ablation.sh \
+     && grep -qF 'Every cell is UNRUN, not a pass for either arm' acceptance/ablation.sh; then
+    sok "ablation: gates on the auth probe and names every cell UNRUN when it fails"
+  else
+    sbad "ablation: no auth gate, or an unrun cell is not named as such"
+  fi
+
   # ---- --keep: the evidence survives the run, and only when asked ---------
   # Neither case 12 nor 13 could show WHICH criterion leaked or drifted after
   # the fact, because the trap removed $WORK. --keep retains its top-level

@@ -1,0 +1,54 @@
+sha	reason
+b3f4d83	tests FAIL at sha (not a self-contained fix in this environment)
+cc93338	LOC 467 outside 50..300
+aca5b3f	LOC 10 outside 50..300
+026b005	LOC 36 outside 50..300
+0d0e7f1	LOC 1307 outside 50..300
+5180f82	LOC 13 outside 50..300
+8c2db58	LOC 2 outside 50..300
+4d2a260	no django/**/*.py touched
+00dca6f	tests PASS on sha^ + tests patch (the commit's tests do not exercise its change)
+05aec0a	LOC 19 outside 50..300
+ddb83ea	LOC 2 outside 50..300
+ae7450c	LOC 18 outside 50..300
+0751d5f	LOC 35 outside 50..300
+6126f5d	LOC 8 outside 50..300
+8d1c673	LOC 42 outside 50..300
+5babd2e	LOC 1 outside 50..300
+60a17fc	LOC 39 outside 50..300
+189136c	LOC 4 outside 50..300
+fe81969	tests FAIL at sha (not a self-contained fix in this environment)
+73cc09f	LOC 38 outside 50..300
+439b936	LOC 2 outside 50..300
+3b767c5	LOC 5 outside 50..300
+fdfbb71	LOC 9 outside 50..300
+7576781	no django/**/*.py touched
+0b40210	LOC 2 outside 50..300
+03988c5	LOC 4 outside 50..300
+4c4f8fd	LOC 20 outside 50..300
+cccc004	LOC 13 outside 50..300
+1d50f12	LOC 18 outside 50..300
+504d1f1	LOC 6 outside 50..300
+464a5e1	LOC 5146 outside 50..300
+d92b020	LOC 4 outside 50..300
+be6cf83	LOC 19 outside 50..300
+c72f5fb	LOC 6 outside 50..300
+f7610bd	LOC 5 outside 50..300
+a3e6e7d	LOC 27 outside 50..300
+3436cf9	LOC 10 outside 50..300
+4ee0497	LOC 8 outside 50..300
+812c08b	LOC 8 outside 50..300
+d6b73a6	LOC 2 outside 50..300
+082b3df	LOC 45 outside 50..300
+6df8fe3	LOC 15 outside 50..300
+616e8c5	LOC 42 outside 50..300
+2b4c88b	LOC 18 outside 50..300
+b5388a3	LOC 20 outside 50..300
+c9eb16a	LOC 21 outside 50..300
+4243ab1	LOC 26 outside 50..300
+ae25a40	LOC 26 outside 50..300
+89e8286	LOC 41 outside 50..300
+dfc52e5	LOC 13 outside 50..300
+401f126	LOC 8 outside 50..300
+9e0655e	LOC 5125 outside 50..300
+30ebe00	LOC 1 outside 50..300

@@ -176,11 +176,11 @@ Everything below is either a number or an honest blank. Nothing deferred is repo
 Installs from the pinned SHA and loads with its full inventory — 6 agents, 2 skills, 1 hook —
 at a projected **~694 tokens always-on**, recorded here as the baseline for future comparison.
 
-`bash acceptance/run.sh` — **255 checks green**:
+`bash acceptance/run.sh` — **260 checks green**:
 
 | Suite | Checks | Covers |
 |---|---|---|
-| static | 179 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no effort pinned in any agent (production runs at the model default every live number was measured at), tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures — plus the measurement harnesses themselves: the headless transport against the Stop-hook defect, every corpus built and each seeded defect matched to the criterion claiming it, ground truth held to a proper subset of the criteria, the falsifier's verdict chain driven to every outcome, each harness telling a missing `claude` apart from an unauthenticated one, and case 17 refusing to score a django host that has not been verified on the exact diff it audits |
+| static | 184 | Tier-1 inventory, manifests, pins resolve as aliases (none `inherit`), no `allowed-tools` in agents, no effort pinned in any agent (production runs at the model default every live number was measured at), tier variants in sync, no while-loop over the generator, no finding floor anywhere, `tools: []` on every non-writing agent, verifier has no findings array, README free of stale figures — plus the measurement harnesses themselves: the headless transport against the Stop-hook defect, every corpus built and each seeded defect matched to the criterion claiming it, ground truth held to a proper subset of the criteria, the falsifier's verdict chain driven to every outcome, each harness telling a missing `claude` apart from an unauthenticated one, and case 17 refusing to score a django host that has not been verified on the exact diff it audits |
 | risk score | 7 | additive scoring, categorical floors, T0 content class. Includes a 4-line auth-guard removal reaching **T3** — the case a multiplicative score zeroes out |
 | preflight | 10 | case 1: `baseRef` unset/`fresh` **blocks**, `CLAUDE_CODE_SUBAGENT_MODEL` blocks, version read from the binary |
 | ledger | 49 | cases 8 + 9: caps hold at 4/6/9, counters monotone under every command sequence, dedup on `seen`, `UNRESOLVED` escalating to a human on the third, and the case 16 dispositions: `resolve` / `waive` append-only and idempotent, `rate` reading the last 10 audits and writing nothing |

@@ -1,0 +1,89 @@
+diff --git a/django/db/models/fields/related.py b/django/db/models/fields/related.py
+index 332a168..56cde9c 100644
+--- a/django/db/models/fields/related.py
++++ b/django/db/models/fields/related.py
+@@ -1533,6 +1533,7 @@ class ManyToManyField(RelatedField):
+             *self._check_relationship_model(**kwargs),
+             *self._check_ignored_options(**kwargs),
+             *self._check_table_uniqueness(**kwargs),
++            *self._check_on_delete(**kwargs),
+         ]
+ 
+     def _check_unique(self, **kwargs):
+@@ -1893,6 +1894,50 @@ class ManyToManyField(RelatedField):
+             ]
+         return []
+ 
++    def _check_on_delete(self, **kwargs):
++        errors = []
++        if (
++            isinstance(self.remote_field.through, str)
++            or not self.remote_field.through._meta.auto_created
++        ):
++            # Manually created through models are checked on their own.
++            return []
++        # Database and Python cascade variants cannot be mixed in a chain of
++        # model references. Auto-created through models are using Python
++        # variants.
++        m2m_through_remote_fields = (
++            m2m_model_field.remote_field
++            for m2m_model_field in self.remote_field.through._meta.get_fields()
++            if m2m_model_field.remote_field
++            and not isinstance(m2m_model_field.remote_field.model, str)
++        )
++        ref_model_fields = (
++            ref_model_field
++            for remote_field in m2m_through_remote_fields
++            for ref_model_field in remote_field.model._meta.get_fields()
++            if ref_model_field.related_model
++            and hasattr(ref_model_field.remote_field, "on_delete")
++        )
++        for ref_model_field in ref_model_fields:
++            if (
++                ref_model_field.remote_field.on_delete is not None
++                and ref_model_field.remote_field.on_delete != DO_NOTHING
++                and isinstance(ref_model_field.remote_field.on_delete, DatabaseOnDelete)
++            ):
++                errors.append(
++                    checks.Error(
++                        "Field specifies database-level on_delete variant, but "
++                        "auto-created intermediary model uses Python-level variant.",
++                        hint=(
++                            "Use either one of the Python on_delete variants or "
++                            f"create a through model for {self}."
++                        ),
++                        obj=ref_model_field,
++                        id="fields.E323",
++                    )
++                )
++        return errors
++
+     def deconstruct(self):
+         name, path, args, kwargs = super().deconstruct()
+         # Handle the simpler arguments.
+diff --git a/docs/ref/checks.txt b/docs/ref/checks.txt
+index 68d1e49..14dc374 100644
+--- a/docs/ref/checks.txt
++++ b/docs/ref/checks.txt
+@@ -322,7 +322,8 @@ Related fields
+ * **fields.E322**: Field specifies ``on_delete=DB_SET_DEFAULT``, but has no
+   ``db_default`` value.
+ * **fields.E323**: Field specifies database/Python-level on_delete variant, but
+-  referenced model uses python/database-level variant.
++  referenced/auto-created intermediary model uses python/database-level
++  variant.
+ * **fields.E324**: ``<database>`` does not support
+   ``<database delete option>``.
+ * **fields.E330**: ``ManyToManyField``\s cannot be unique.
+diff --git a/docs/releases/6.1.1.txt b/docs/releases/6.1.1.txt
+index d5dbef5..f53eb8c 100644
+--- a/docs/releases/6.1.1.txt
++++ b/docs/releases/6.1.1.txt
+@@ -16,3 +16,7 @@ Bugfixes
+ * Fixed a regression in Django 6.1 where :attr:`.ModelAdmin.list_display`
+   entries that traverse multiple relations using ``__`` could crash or display
+   incorrect values (:ticket:`37270`).
++
++* Fixed a bug in Django 6.1 where the ``fields.E323`` system check did not
++  detect mixed ``on_delete`` variants for auto-created intermediate models for
++  ``ManyToManyField``\s (:ticket:`37254`).

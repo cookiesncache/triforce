@@ -1,0 +1,84 @@
+diff --git a/tests/async/test_async_queryset.py b/tests/async/test_async_queryset.py
+index f041274..69a6061 100644
+--- a/tests/async/test_async_queryset.py
++++ b/tests/async/test_async_queryset.py
+@@ -7,7 +7,7 @@ from asgiref.sync import async_to_sync, sync_to_async
+ from django.db import NotSupportedError, connection
+ from django.db.models import Prefetch, Sum
+ from django.test import TestCase, skipIfDBFeature, skipUnlessDBFeature
+-from django.utils.deprecation import RemovedInDjango71Warning
++from django.utils.deprecation import RemovedInDjango2029Warning
+ 
+ from .models import RelatedModel, SimpleModel
+ 
+@@ -66,7 +66,7 @@ class AsyncQuerySetTest(TestCase):
+         )
+         qs = SimpleModel.objects.prefetch_related("relatedmodel_set").aiterator()
+ 
+-        # RemovedInDjango71Warning: When the deprecation ends, replace with:
++        # RemovedInDjango2029Warning: When the deprecation ends, replace with:
+         # with self.assertRaisesMessage(
+         #     ValueError,
+         #     "chunk_size must be provided when using QuerySet.aiterator() "
+@@ -75,7 +75,7 @@ class AsyncQuerySetTest(TestCase):
+         #     async for _ in qs:
+         #         pass
+         results = []
+-        with self.assertWarnsMessage(RemovedInDjango71Warning, msg):
++        with self.assertWarnsMessage(RemovedInDjango2029Warning, msg):
+             async for s in qs:
+                 results.append(s)
+         self.assertCountEqual(results, [self.s1, self.s2, self.s3])
+diff --git a/tests/deprecation/test_middleware_mixin.py b/tests/deprecation/test_middleware_mixin.py
+index c18b58e..1dfaedc 100644
+--- a/tests/deprecation/test_middleware_mixin.py
++++ b/tests/deprecation/test_middleware_mixin.py
+@@ -30,7 +30,7 @@ from django.middleware.http import ConditionalGetMiddleware
+ from django.middleware.locale import LocaleMiddleware
+ from django.middleware.security import SecurityMiddleware
+ from django.test import SimpleTestCase
+-from django.utils.deprecation import RemovedInDjango71Warning
++from django.utils.deprecation import RemovedInDjango2029Warning
+ 
+ 
+ class MiddlewareMixinTests(SimpleTestCase):
+@@ -61,7 +61,7 @@ class MiddlewareMixinTests(SimpleTestCase):
+             "Importing MiddlewareMixin from django.utils.deprecation is deprecated. "
+             "Import from django.middleware.MiddlewareMixin instead."
+         )
+-        with self.assertWarnsMessage(RemovedInDjango71Warning, msg):
++        with self.assertWarnsMessage(RemovedInDjango2029Warning, msg):
+             from django.utils.deprecation import (
+                 MiddlewareMixin as DeprecatedMiddlewareMixin,
+             )
+diff --git a/tests/httpwrappers/tests.py b/tests/httpwrappers/tests.py
+index e2eb9af..5e57d37 100644
+--- a/tests/httpwrappers/tests.py
++++ b/tests/httpwrappers/tests.py
+@@ -24,7 +24,7 @@ from django.http import (
+     parse_cookie,
+ )
+ from django.test import SimpleTestCase
+-from django.utils.deprecation import RemovedInDjango71Warning
++from django.utils.deprecation import RemovedInDjango2029Warning
+ from django.utils.encoding import iri_to_uri
+ from django.utils.functional import lazystr
+ from django.utils.http import MAX_URL_REDIRECT_LENGTH
+@@ -704,7 +704,7 @@ class JsonResponseTests(SimpleTestCase):
+         response = JsonResponse(data)
+         self.assertEqual(json.loads(response.text), data)
+ 
+-    # RemovedInDjango71Warning: When the deprecation ends, remove this test.
++    # RemovedInDjango2029Warning: When the deprecation ends, remove this test.
+     def test_json_response_raises_type_error_with_safe_arg(self):
+         with (
+             self.assertRaisesMessage(
+@@ -713,7 +713,7 @@ class JsonResponseTests(SimpleTestCase):
+                 "safe parameter to False",
+             ),
+             self.assertWarnsMessage(
+-                RemovedInDjango71Warning, "The safe parameter is deprecated."
++                RemovedInDjango2029Warning, "The safe parameter is deprecated."
+             ),
+         ):
+             JsonResponse([1, 2, 3], safe=True)

@@ -1,0 +1,32 @@
+diff --git a/django/db/models/fields/related.py b/django/db/models/fields/related.py
+index 56cde9c..bce026e 100644
+--- a/django/db/models/fields/related.py
++++ b/django/db/models/fields/related.py
+@@ -601,6 +601,14 @@ class ForeignObject(RelatedField):
+         obj.__dict__.pop("reverse_path_infos", None)
+         return obj
+ 
++    @property
++    def non_db_attrs(self):
++        if isinstance(self.remote_field.on_delete, DatabaseOnDelete):
++            # Database-level on_delete options are part of the column
++            # definition.
++            return super().non_db_attrs
++        return super().non_db_attrs + ("on_delete",)
++
+     def check(self, **kwargs):
+         return [
+             *super().check(**kwargs),
+diff --git a/docs/releases/6.1.1.txt b/docs/releases/6.1.1.txt
+index 4e13e84..225b3bf 100644
+--- a/docs/releases/6.1.1.txt
++++ b/docs/releases/6.1.1.txt
+@@ -25,3 +25,8 @@ Bugfixes
+   created with :func:`~django.utils.safestring.mark_safe`, used as form media
+   assets were treated as asset paths rather than being rendered verbatim
+   (:ticket:`37262`).
++
++* Fixed a regression in Django 6.1 that caused ``AlterField`` operations that
++  changed only the Python-level ``on_delete`` option of ``ForeignKey`` or
++  ``OneToOneField`` fields to perform unnecessary schema changes
++  (:ticket:`37260`).

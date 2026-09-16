@@ -15,3 +15,8 @@ evals/.out/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Ablation raw streams: retained on disk, too large to commit. meta/transcript/diff/tests are committed.
+acceptance/ablation/runs/**/stream.jsonl
+acceptance/ablation/runs/**/stderr.txt
+acceptance/ablation/runs/**/triforce-state/audited/

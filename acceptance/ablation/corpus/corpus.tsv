@@ -1,0 +1,12 @@
+# drawn 2026-09-16T03:22Z from /c/Users/simsc/Documents/Claude/Code/repos/django at b3f4d83aad7f589f165a6d8b020b7acba4936f35, scan=400 newest-first, no merges
+sha	loc	labels	subject
+0398417c503e9f32674b36865abc54e575e8bcd7	123	utils_tests.test_module_loading	Fixed #36523 -- Added django.utils.module_loading.qualname() helper.
+52abe52bec23df6523aff492364f4f1b049c9572	50	async.test_async_queryset deprecation.test_middleware_mixin httpwrappers	Fixed #37293 -- Renamed RemovedInDjango71Warning to RemovedInDjango2029Warning.
+f14e293cd7444e064b9c9ba471fd5aa7e6132ea6	111	lookup	Fixed #37312, Refs #36605 -- Fixed annotation preservation and key selection in in_bulk().
+d992705f9eb56199dc474b77af16474e5ce3d2ab	152	basic	Fixed #37259 -- Restored support for old-signature Model.from_db() overrides.
+1a001208b0b9d79b15b27ca04d94f31f3d55d5ea	89	composite_pk.test_order_by ordering	Fixed #37278 -- Made QuerySet.totally_ordered understand aliases to pure Col/ColPairs.
+07d4f69c94a0e32c583b3aee5daf48fd81b4cd69	89	migrations.test_operations schema	Fixed #37260 -- Made alterations between Python on_delete options noops.
+febefb175e03352e5aeb2ed827024bacab96cf16	112	constraints validation validation.test_unique	Fixed #37248 -- Skipped unique validation of a dynamic DatabaseDefault expression.
+99d56e5cf15839995f62f24294584f1e2976b1ea	60	forms_tests	Fixed #37262 -- Restored rendering of html-safe strings in form media.
+c6be0bf3bb744d234947cefd6def9f31d9655800	94	invalid_models_tests.test_relative_fields	Fixed #37254 -- Added fields.E323 for models referenced by ManyToManyFields.
+8f52e9199b260cdacc5ad372692cddf2dcf76558	65	migrations.test_autodetector	Fixed #37224 -- Skipped questioner for field changes on unmanaged models.

@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 255 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 260 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -896,6 +896,59 @@ to withdraw.
 
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
+
+### The with/without ablation — pre-registered BEFORE any run (2026-09-16)
+
+The outside review's section 6, built as `acceptance/ablation-corpus.sh` (the draw) and
+`acceptance/ablation.sh` (the runs). This section is written before the first arm is invoked and
+will not be edited after; results go in their own section.
+
+**Corpus.** Drawn mechanically from `../django`'s history, newest first, no merges, scan 400:
+50 ≤ LOC ≤ 300, ≥ 1 `django/**/*.py`, ≥ 1 `tests/` file with a runtests label, and the dynamic
+criterion — **the commit's own `tests/` hunks applied on `<sha>^` fail, and `<sha>` passes.** Every
+rejection is recorded with its reason in `acceptance/ablation/corpus/rejected.tsv`.
+
+One correction to the review's wording, made before the draw was used: it said "the touched test
+module fails at `<sha>^`". Run literally, that rejects almost every real fix, because the tests
+that exercise a fix are ADDED by it — the first draw rejected 11 of 13 candidates as "passes at
+sha^". The criterion as built is the hidden-acceptance step itself applied to a no-op arm, which
+is what the review meant.
+
+**Arms.** Both from a fresh detached worktree at `<sha>^` with
+`.claude/settings.json = {"worktree":{"baseRef":"head"}}`, `--dangerously-skip-permissions`
+(a scratch worktree; headless has no one to ask), full `stream-json` retained per run.
+- **A** `claude -p --model opus --effort high "<task>"`. No plugin.
+- **B** `claude -p --plugin-dir <this repo> "/triforce <task>"`, criteria pre-frozen to
+  `C1 = commit subject` + S1–S6 via `TRIFORCE_CRITERIA_FILE`.
+
+**The one production change made for this.** Headless `claude -p` has no `AskUserQuestion` (probed
+with haiku: the model reports the tool absent). zelda's contract requires confirmation through it,
+so headless zelda could not freeze criteria at all. `agents/zelda.md` §2 now has a **pre-frozen**
+path: if the frozen file already exists and is non-empty when zelda starts, it is the user's and
+is used as-is — no extraction, no confirmation, no edit. It is inert interactively unless the user
+wrote the file first. It authors nothing. Recorded here as a deviation made for measurement.
+
+**Metrics per cell**, all retained under `acceptance/ablation/runs/taskNN/<arm><rep>/`: hidden
+tests pass (binary, PRIMARY); tokens per model and `total_cost_usd` from the stream's result;
+wall seconds; completed (result subtype `success` AND a non-empty diff); B only: preflight tier,
+and the gated findings copied out of `.triforce/` for adjudication BY HAND. The task prompt is
+subject + body + test-function NAMES only; the reference patch and the tests patch never enter
+the worktree, and the harness asserts it.
+
+**n.** 10 tasks × 2 arms × 2 repetitions = 40 cells, bought in instalments, A and B interleaved
+per task so a partial table is still paired. Model id recorded on every cell.
+
+**Decision rule, fixed now** (review §6):
+- B fails to complete headlessly in **> 2 of 20** → production path unverified; NOT DEFENSIBLE
+  until fixed.
+- Paired on tasks, discordant pairs favour A → NOT DEFENSIBLE, stop.
+- B ≥ A on pass rate AND median B/A token ratio ≤ 2.0 → DEFENSIBLE WITH STATED CAVEATS as a default.
+- B ≥ A on pass rate AND ratio > 2.0 → defensible only as opt-in for T2/T3 diffs; publish the tier
+  histogram.
+- The audit's TP/FP tally is reported regardless.
+
+**INVARIANT 10.** A cell that did not execute is UNRUN and is a pass for neither arm. A cell whose
+arm changed nothing is not completed. The auth probe gates the script.
 
 ### An outside review says NOT DEFENSIBLE as a replacement for one Opus session (2026-09-15)
 
@@ -2083,7 +2136,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **255** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **260** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its

@@ -1,0 +1,182 @@
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index 222b1c2..65d8575 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -6,7 +6,7 @@ import copy
+ import operator
+ import warnings
+ from contextlib import nullcontext
+-from functools import reduce
++from functools import partial, reduce
+ from itertools import chain, islice
+ from weakref import ref as weak_ref
+ 
+@@ -52,6 +52,7 @@ from django.utils.deprecation import (
+     warn_about_external_use,
+ )
+ from django.utils.functional import cached_property
++from django.utils.inspect import func_accepts_kwargs, func_supports_parameter
+ from django.utils.warnings import django_file_prefixes
+ 
+ # The maximum number of results to fetch in a get() query.
+@@ -63,6 +64,34 @@ REPR_OUTPUT_SIZE = 20
+ DEFAULT_FETCH_MODE = FETCH_ONE
+ 
+ 
++# RemovedInDjango70Warning: When the deprecation ends, remove this function
++# and restore direct model_cls.from_db(..., fetch_mode=fetch_mode) calls at
++# its call sites.
++def _get_from_db(model_cls, fetch_mode):
++    """
++    Return a callable equivalent to model_cls.from_db with fetch_mode already
++    bound, accommodating deprecated from_db() overrides that don't accept the
++    fetch_mode keyword argument.
++    """
++    from django.db.models import Model
++
++    from_db = model_cls.from_db
++    if (
++        from_db.__func__ is Model.from_db.__func__
++        or func_supports_parameter(from_db, "fetch_mode")
++        or func_accepts_kwargs(from_db)
++    ):
++        return partial(from_db, fetch_mode=fetch_mode)
++    warnings.warn(
++        f"{model_cls.__qualname__}.from_db() must accept a fetch_mode keyword "
++        "argument. Support for from_db() methods that do not accept it is "
++        "deprecated.",
++        RemovedInDjango70Warning,
++        skip_file_prefixes=django_file_prefixes(),
++    )
++    return from_db
++
++
+ class BaseIterable:
+     def __init__(
+         self, queryset, chunked_fetch=False, chunk_size=GET_ITERATOR_CHUNK_SIZE
+@@ -123,6 +152,10 @@ class ModelIterable(BaseIterable):
+         init_list = [
+             f[0].target.attname for f in select[model_fields_start:model_fields_end]
+         ]
++        # RemovedInDjango70Warning: When the deprecation ends, remove this
++        # assignment and call model_cls.from_db(..., fetch_mode=fetch_mode)
++        # directly in the loop below.
++        from_db = _get_from_db(model_cls, fetch_mode)
+         related_populators = get_related_populators(klass_info, select, db, fetch_mode)
+         known_related_objects = [
+             (
+@@ -142,11 +175,10 @@ class ModelIterable(BaseIterable):
+         ]
+         peers = []
+         for row in compiler.results_iter(results):
+-            obj = model_cls.from_db(
++            obj = from_db(
+                 db,
+                 init_list,
+                 row[model_fields_start:model_fields_end],
+-                fetch_mode=fetch_mode,
+             )
+             if fetch_mode.track_peers:
+                 peers.append(weak_ref(obj))
+@@ -213,13 +245,16 @@ class RawModelIterable(BaseIterable):
+                     query_iterator, cols
+                 )
+             fetch_mode = self.queryset._fetch_mode
++            # RemovedInDjango70Warning: When the deprecation ends, remove
++            # this assignment and call
++            # model_cls.from_db(..., fetch_mode=fetch_mode) directly in the
++            # loop below.
++            from_db = _get_from_db(model_cls, fetch_mode)
+             peers = []
+             for values in query_iterator:
+                 # Associate fields to values
+                 model_init_values = [values[pos] for pos in model_init_pos]
+-                instance = model_cls.from_db(
+-                    db, model_init_names, model_init_values, fetch_mode=fetch_mode
+-                )
++                instance = from_db(db, model_init_names, model_init_values)
+                 if fetch_mode.track_peers:
+                     peers.append(weak_ref(instance))
+                     instance._state.peers = peers
+@@ -3044,6 +3079,11 @@ class RelatedPopulator:
+             )
+ 
+         self.model_cls = klass_info["model"]
++        # RemovedInDjango70Warning: When the deprecation ends, remove this
++        # assignment and call
++        # self.model_cls.from_db(..., fetch_mode=fetch_mode) directly in
++        # populate().
++        self.from_db = _get_from_db(self.model_cls, fetch_mode)
+         # A primary key must have all of its constituents not-NULL as
+         # NULL != NULL and thus NULL cannot be referenced through a foreign
+         # relationship. Therefore checking for a single member of the primary
+@@ -3063,11 +3103,10 @@ class RelatedPopulator:
+         if obj_data[self.pk_idx] is None:
+             obj = None
+         else:
+-            obj = self.model_cls.from_db(
++            obj = self.from_db(
+                 self.db,
+                 self.init_list,
+                 obj_data,
+-                fetch_mode=self.fetch_mode,
+             )
+             for rel_iter in self.related_populators:
+                 rel_iter.populate(row, obj)
+diff --git a/docs/internals/deprecation.txt b/docs/internals/deprecation.txt
+index e86a456..e7d6838 100644
+--- a/docs/internals/deprecation.txt
++++ b/docs/internals/deprecation.txt
+@@ -151,6 +151,9 @@ details on these changes.
+ * The ``django.db.transaction.savepoint()`` alias to
+   ``django.db.transaction.savepoint_create()`` will be removed.
+ 
++* Support for ``Model.from_db()`` methods that do not accept the
++  ``fetch_mode`` keyword argument will be removed.
++
+ .. _deprecation-removed-in-6.1:
+ 
+ 6.1
+diff --git a/docs/ref/models/instances.txt b/docs/ref/models/instances.txt
+index 83e2e97..bfe9067 100644
+--- a/docs/ref/models/instances.txt
++++ b/docs/ref/models/instances.txt
+@@ -150,6 +150,11 @@ is done. In this case it would be possible to use a ``super()`` call in the
+ 
+     The ``fetch_mode`` parameter was added.
+ 
++.. deprecated:: 6.1
++
++    Support for ``from_db()`` methods that do not accept the ``fetch_mode``
++    keyword argument is deprecated and will be removed in Django 7.0.
++
+ .. _refreshing-objects:
+ 
+ Refreshing objects from database
+diff --git a/docs/releases/6.1.1.txt b/docs/releases/6.1.1.txt
+index ec9affd..1b7a25b 100644
+--- a/docs/releases/6.1.1.txt
++++ b/docs/releases/6.1.1.txt
+@@ -34,3 +34,8 @@ Bugfixes
+ * Fixed a bug in Django 6.1 where :class:`~django.db.models.DecimalField`
+   without ``max_digits`` and ``decimal_places`` caused a crash when retrieving
+   values on SQLite (:ticket:`37275`).
++
++* Fixed a regression in Django 6.1 that caused a crash when iterating a
++  ``QuerySet`` of a model overriding ``Model.from_db()`` without the new
++  ``fetch_mode`` keyword argument. Such overrides now work again, but are
++  deprecated and should be updated to accept ``fetch_mode`` (:ticket:`37259`).
+diff --git a/docs/releases/6.1.txt b/docs/releases/6.1.txt
+index e4380f4..3d7700b 100644
+--- a/docs/releases/6.1.txt
++++ b/docs/releases/6.1.txt
+@@ -661,6 +661,9 @@ Miscellaneous
+   is deprecated. Pass an explicit field name, like
+   ``values_list("pk", flat=True)``.
+ 
++* Support for ``Model.from_db()`` methods that do not accept the
++  ``fetch_mode`` keyword argument is deprecated.
++
+ * The use of ``None`` to represent a top-level JSON scalar ``null`` when
+   querying :class:`~django.db.models.JSONField` is now deprecated in favor of
+   the new :class:`~django.db.models.JSONNull` expression. At the end of the
