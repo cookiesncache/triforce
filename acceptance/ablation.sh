@@ -101,6 +101,47 @@ if [ "$DRY" = 0 ]; then
   fi
 fi
 
+# WHICH TRIFORCE SERVES A CELL IS ASSERTED, NOT ASSUMED.
+#
+# An installed copy of this plugin (triforce@cookiesncache-marketplace, the
+# author's own marketplace) shadows --plugin-dir: with both present the
+# marketplace copy won 3 of 3 probes from inside this repo and raced it from
+# elsewhere. Disabling it suppresses the inline one too (the flag is by name).
+# The first A cell ran WITH the installed plugin loaded -- skill, agents, Stop
+# hook -- and the first B cells ran the installed copy's stale skill. Both are
+# void. So: the installed copy is uninstalled for the run and reinstalled on
+# exit, and every cell's init line is checked -- arm A must carry no triforce
+# at all, arm B must carry triforce@inline at THIS repo -- or the cell is UNRUN.
+MARKET_ID="triforce@cookiesncache-marketplace"
+RESTORE_PLUGIN=0
+if [ "$DRY" = 0 ] && grep -q "\"$MARKET_ID\"" "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null; then
+  echo "  plugin  $MARKET_ID is installed and would shadow --plugin-dir; uninstalling for this run (restored on exit)"
+  claude plugin uninstall --keep-data "$MARKET_ID" >/dev/null 2>&1 && RESTORE_PLUGIN=1
+fi
+restore_plugin() {
+  if [ "$RESTORE_PLUGIN" = 1 ]; then
+    if claude plugin install "$MARKET_ID" >/dev/null 2>&1; then echo "  plugin  $MARKET_ID reinstalled"
+    else echo "  plugin  FAILED to reinstall $MARKET_ID -- run: claude plugin install $MARKET_ID" >&2; fi
+  fi
+}
+trap restore_plugin EXIT
+
+# plugin_state <stream.jsonl> -> "<source>|<path>|<skill 0/1>|<mcp count>" from the init line
+plugin_state() {
+  "$HL_PY" - "$1" <<'PY'
+import json, sys
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    try: d = json.loads(line)
+    except Exception: continue
+    if d.get("type") == "system" and d.get("subtype") == "init":
+        tf = [p for p in d.get("plugins", []) if p.get("name") == "triforce"]
+        src = ",".join(p.get("source", "") for p in tf); path = ",".join(p.get("path", "") for p in tf)
+        print("%s|%s|%d|%d" % (src, path.replace("\\", "/"), int("triforce:triforce" in d.get("skills", [])), len(d.get("mcp_servers", []))))
+        sys.exit(0)
+print("NO_INIT|||")
+PY
+}
+
 mkdir -p "$OUT"
 RESULTS="$OUT/results.tsv"
 [ -f "$RESULTS" ] || printf 'task\tarm\trep\tsha\tcompleted\tpass\twall_s\tcost_usd\ttokens_in\ttokens_out\tcache_create\tcache_read\tmodels\ttier\tnote\n' > "$RESULTS"
@@ -155,10 +196,13 @@ run_cell() {   # run_cell <task> <arm> <rep>
   t0=$(date +%s)
   case "$arm" in
     A)
-      ( cd "$WT" && MSYS_NO_PATHCONV=1 timeout "${ABL_TIMEOUT:-2400}" claude -p --model opus --effort high \
+      # The prompt goes in on STDIN for both arms: --disallowedTools is variadic
+      # and swallowed a trailing prompt argument as a tool name. A slash command
+      # on stdin still expands as a skill (probed).
+      ( cd "$WT" && printf '%s' "$prompt" | MSYS_NO_PATHCONV=1 timeout "${ABL_TIMEOUT:-2400}" claude -p --model opus --effort high \
           --output-format stream-json --verbose --dangerously-skip-permissions \
           --strict-mcp-config --disallowedTools "WebFetch,WebSearch" \
-          "$prompt" > "$R/stream.jsonl" 2> "$R/stderr.txt" ); rc=$? ;;
+          > "$R/stream.jsonl" 2> "$R/stderr.txt" ); rc=$? ;;
     B)
       mkdir -p "$WT/.triforce"
       {
@@ -174,10 +218,10 @@ run_cell() {   # run_cell <task> <arm> <rep>
       # MSYS_NO_PATHCONV: Git Bash rewrites an argument that starts with "/" into
       # a Windows path, so "/triforce ..." reached the CLI as "C:/Program
       # Files/Git/triforce ..." and the first B cell ran with no skill at all.
-      ( cd "$WT" && MSYS_NO_PATHCONV=1 TRIFORCE_CRITERIA_FILE="$WT/.triforce/criteria.tsv" timeout "${ABL_TIMEOUT:-3600}" claude -p --plugin-dir "$ROOT" \
+      ( cd "$WT" && printf '/triforce %s' "$prompt" | MSYS_NO_PATHCONV=1 TRIFORCE_CRITERIA_FILE="$WT/.triforce/criteria.tsv" timeout "${ABL_TIMEOUT:-3600}" claude -p --plugin-dir "$ROOT" \
           --output-format stream-json --verbose --dangerously-skip-permissions \
           --strict-mcp-config --disallowedTools "WebFetch,WebSearch" \
-          "/triforce $prompt" > "$R/stream.jsonl" 2> "$R/stderr.txt" ); rc=$? ;;
+          > "$R/stream.jsonl" 2> "$R/stderr.txt" ); rc=$? ;;
     *) echo "ablation: unknown arm $arm" >&2; return 2 ;;
   esac
   t1=$(date +%s); wall=$((t1 - t0))
@@ -185,7 +229,16 @@ run_cell() {   # run_cell <task> <arm> <rep>
   IFS=$'\t' read -r cost tin tout cc cr models subtype turns < <(usage_of "$R/stream.jsonl")
   # What the arm produced, relative to base. Committed or not, staged or not.
   ( cd "$WT" && git add -A >/dev/null 2>&1 && git diff --cached "$base" -- . ':!.claude' ':!.triforce' > "$R/agent.diff" 2>/dev/null )
-  if [ "$rc" -eq 124 ]; then note="TIMEOUT after ${ABL_TIMEOUT:-}s"
+  IFS='|' read -r _psrc _ppath _pskill _pmcp < <(plugin_state "$R/stream.jsonl")
+  _rootn=$(printf '%s' "$ROOT" | sed 's|^/c/|C:/|')
+  _pstate_ok=1
+  case "$arm" in
+    A) [ -z "$_psrc" ] && [ "$_pskill" = 0 ] && [ "${_pmcp:-0}" = 0 ] || _pstate_ok=0 ;;
+    B) [ "$_psrc" = "triforce@inline" ] && [ "$(printf '%s' "$_ppath" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$_rootn" | tr 'A-Z' 'a-z')" ] && [ "${_pmcp:-0}" = 0 ] || _pstate_ok=0 ;;
+  esac
+  printf 'plugin_source\t%s\nplugin_path\t%s\ntriforce_skill\t%s\nmcp_servers\t%s\n' "$_psrc" "$_ppath" "$_pskill" "$_pmcp" > "$R/plugin-state.tsv"
+  if [ "$_pstate_ok" = 0 ]; then note="WRONG PLUGIN STATE: source='$_psrc' path='$_ppath' skill=$_pskill mcp=$_pmcp -- UNRUN"
+  elif [ "$rc" -eq 124 ]; then note="TIMEOUT after ${ABL_TIMEOUT:-}s"
   elif [ "$subtype" != "success" ]; then note="result subtype=${subtype:-none} rc=$rc"
   elif ! grep -q '[^[:space:]]' "$R/agent.diff" 2>/dev/null; then note="EMPTY DIFF: the arm changed nothing"
   else completed=1; fi

@@ -1433,6 +1433,16 @@ else
   else
     sbad "ablation: the draw runs the OLD tests at sha^, which pass for almost every fix"
   fi
+  # The plugin that serves a cell is asserted from the init line, never assumed:
+  # an installed copy of this plugin shadowed --plugin-dir and served two cells
+  # a stale skill, and the first baseline cell had the plugin loaded at all.
+  if grep -qF 'WRONG PLUGIN STATE' acceptance/ablation.sh \
+     && grep -qF '[ "$_psrc" = "triforce@inline" ]' acceptance/ablation.sh \
+     && grep -qF 'trap restore_plugin EXIT' acceptance/ablation.sh; then
+    sok "ablation: every cell's plugin state is read from its init line (A: none; B: triforce@inline at this repo), and the installed copy is restored on exit"
+  else
+    sbad "ablation: a cell could be served by the installed marketplace copy, or the baseline could carry the plugin, unnoticed"
+  fi
   if grep -qF 'probe=$(timeout 90 claude -p "Reply with exactly: READY" --model haiku' acceptance/ablation.sh \
      && grep -qF 'Every cell is UNRUN, not a pass for either arm' acceptance/ablation.sh; then
     sok "ablation: gates on the auth probe and names every cell UNRUN when it fails"

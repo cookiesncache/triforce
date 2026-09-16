@@ -1,2 +1,0 @@
-task	arm	rep	sha	completed	pass	wall_s	cost_usd	tokens_in	tokens_out	cache_create	cache_read	models	tier	note
-01	A	1	0398417c503e9f32674b36865abc54e575e8bcd7	1	0	100	1.1910842499999998	30	5834	119523	642464	claude-opus-5,claude-haiku-4-5-20251001		hidden tests rc=1

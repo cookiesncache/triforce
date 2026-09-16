@@ -119,7 +119,7 @@ skipping quietly. A case that did not run must never be counted as one that pass
 ## The work, in order
 
 ```bash
-bash acceptance/run.sh                    # DONE — 261 checks green, 5/5 suites, exit 0.
+bash acceptance/run.sh                    # DONE — 262 checks green, 5/5 suites, exit 0.
                                          #   Verified at the committed tip, 2026-09-14.
                                          #   Must stay green.
 bash acceptance/clean-corpus.sh           # DONE — case 11, THE GATE: 91% (11/12), cleared
@@ -896,6 +896,36 @@ to withdraw.
 
 **NOT MEASURED.** Three offline checks guard its construction; none of them is a result. Run
 `--case 17 --corpus django --repo <clone> --host <sha>` to get one, on a host verified clean first.
+
+### Ablation findings 2 and 3: an installed copy shadows `--plugin-dir`, and the baseline was not a baseline (2026-09-16)
+
+**2. `triforce@cookiesncache-marketplace` (0.3.0, installed 2026-09-02 from the author's own
+marketplace) shadows `--plugin-dir`.** With both present, the init line of a `claude -p
+--plugin-dir <this repo>` session named the MARKETPLACE copy 3 of 3 times from inside this repo,
+and raced it from a temp cwd (the first B cell got `triforce@inline`, the second got the
+marketplace copy). `claude plugin disable` does not help — the flag is by name and suppresses the
+inline copy too. With the marketplace copy UNINSTALLED and a temp cwd, `triforce@inline` at this
+repo registered 3 of 3. So the second B cell ran the installed copy's stale `SKILL.md` — still
+`agent: zelda`, no pin — which is why it was on sonnet again after the fix.
+
+What this does to the record: the installed copy's agent files match this repo as of 2026-09-10
+(`ganondorf-t2.md` differs from HEAD only by the `effort:` line `--agent` ignores; `hooks.json`,
+`gate.sh`, `preflight.sh` identical). Every live audit in this file went through `--agent
+ganondorf-tN`, and whichever copy served it carried the same prompt, so **those numbers stand**.
+Nothing before today depended on the diverged parts (today's `resolve`/`rate`, the pre-frozen path,
+the skill pin). No past run recorded which copy served it; from now on the ablation writes
+`plugin-state.tsv` per cell, and the other harnesses should record the init line's plugin source
+the way they now record the model — listed under "Things that will bite".
+
+**3. The first A cell was not a baseline.** Its init line shows the installed triforce loaded —
+skill, six agents, the Stop hook — and 13 MCP servers. The model used only Bash and never invoked
+any of it, but "a plain Opus session" must have none of it available. Void.
+
+**The harness now enforces the state.** `ablation.sh` uninstalls the marketplace copy for the run
+(`--keep-data`) and reinstalls it on exit, and reads every cell's init line: arm A must carry no
+triforce plugin and no MCP servers; arm B must carry `triforce@inline` at this repo and no MCP
+servers. Any other state is `WRONG PLUGIN STATE` and the cell is UNRUN. The void cells' streams are
+kept outside the repo; `results.tsv` starts clean. **No counted cell has run yet.**
 
 ### Ablation finding 1: `/triforce` has NEVER applied zelda's pin — `agent:` is ignored under inline (2026-09-16)
 
@@ -2158,6 +2188,13 @@ the one multi-model arrangement the research supports.
 
 ---
 
+**An installed copy of this plugin shadows `--plugin-dir`, and races it.** Found 2026-09-16;
+see "Ablation findings 2 and 3". Any harness that passes `--plugin-dir "$ROOT"` may be served by
+`~/.claude/plugins/cache/cookiesncache-marketplace/triforce/<ver>` instead, silently. The ablation
+asserts the init line per cell; `live-cases.sh`, `clean-corpus.sh` and `probe-harness.sh` do not
+yet, and should record the plugin source beside the model id. Until then, uninstall the
+marketplace copy before any live measurement of a changed agent or skill, and reinstall after.
+
 ## Invariants that must survive any change
 
 Check these before committing anything. `acceptance/run.sh` enforces most mechanically.
@@ -2187,7 +2224,7 @@ Check these before committing anything. `acceptance/run.sh` enforces most mechan
 - **`cookiesncache/triforce`** — `main` only, no PRs, catalog pins its tip.
 - **Catalog** — merged as `b5b4c46` in `cookiesncache/claude-plugins`; re-pin the SHA there on every
   release, and bump `.claude-plugin/plugin.json` alongside it.
-- **`acceptance/run.sh`** — **261** checks (89 + 4 guarding the extraction defect,
+- **`acceptance/run.sh`** — **262** checks (89 + 4 guarding the extraction defect,
   + 5 guarding the probe-harness fixture and the non-execution class, + 7 guarding the
   blocking-only population and the counters it rests on, + 2 guarding case 13's fixture
   against reproducing the base tree, + 3 guarding case 15's self-containment and its
