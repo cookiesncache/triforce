@@ -150,8 +150,22 @@ PY
 }
 
 mkdir -p "$OUT"
+
+# WHICH MACHINE RAN THE CELL. The first pair (task01 A1/B1) ran on Windows and
+# the rest are expected to run elsewhere; OS, CLI build and filesystem all differ
+# between them, and ledger.sh behaved differently on each until the exec-bit fix.
+# Within-task pairing survives a host change because a task's A and B run
+# together, but any cross-task statement -- "B completed 18 of 20" -- silently
+# mixes environments unless the host is on the row. Same reason plugin-state.tsv
+# and the models column exist. Rows written before this column was added are
+# backfilled as "windows".
+HOST_OS="$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+case "$HOST_OS" in mingw*|msys*|cygwin*) HOST_OS=windows ;; esac
+HOST_CLI="$(claude --version 2>/dev/null | awk '{print $1}')"
+HOST_ID="${HOST_OS:-unknown}${HOST_CLI:+/$HOST_CLI}"
+
 RESULTS="$OUT/results.tsv"
-[ -f "$RESULTS" ] || printf 'task\tarm\trep\tsha\tcompleted\tpass\twall_s\tcost_usd\ttokens_in\ttokens_out\tcache_create\tcache_read\tmodels\ttier\tnote\n' > "$RESULTS"
+[ -f "$RESULTS" ] || printf 'task\tarm\trep\tsha\tcompleted\tpass\twall_s\tcost_usd\ttokens_in\ttokens_out\tcache_create\tcache_read\tmodels\ttier\thost\tnote\n' > "$RESULTS"
 
 # usage_of <stream.jsonl> -> "cost<TAB>in<TAB>out<TAB>cc<TAB>cr<TAB>models<TAB>subtype<TAB>turns"
 usage_of() {
@@ -298,9 +312,9 @@ run_cell() {   # run_cell <task> <arm> <rep>
     echo "UNRUN or incomplete; hidden tests not applied" > "$R/tests.log"
   fi
   note="${note#; }"
-  printf 'task\tarm\trep\tsha\tcompleted\tpass\twall_s\tcost_usd\ttokens_in\ttokens_out\tcache_create\tcache_read\tmodels\ttier\tnote\n' > "$R/meta.tsv"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$t" "$arm" "$rep" "$sha" "$completed" "$pass" "$wall" "$cost" "$tin" "$tout" "$cc" "$cr" "$models" "$tier" "$note" | tee -a "$RESULTS" | tail -1 >> "$R/meta.tsv"
+  printf 'task\tarm\trep\tsha\tcompleted\tpass\twall_s\tcost_usd\ttokens_in\ttokens_out\tcache_create\tcache_read\tmodels\ttier\thost\tnote\n' > "$R/meta.tsv"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$t" "$arm" "$rep" "$sha" "$completed" "$pass" "$wall" "$cost" "$tin" "$tout" "$cc" "$cr" "$models" "$tier" "$HOST_ID" "$note" | tee -a "$RESULTS" | tail -1 >> "$R/meta.tsv"
   echo "        completed=$completed pass=$pass wall=${wall}s cost=\$${cost:-?} models=[$models] ${note:+note=$note}"
   git -C "$REPO" worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$(dirname "$WT")"
   [ "$SCORE_WT" != "$WT" ] && { git -C "$REPO" worktree remove --force "$SCORE_WT" >/dev/null 2>&1; rm -rf "$(dirname "$SCORE_WT")"; }
