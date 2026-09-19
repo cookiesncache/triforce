@@ -177,7 +177,14 @@ case "$CMD" in
     [ $# -eq 2 ] || die "usage: bump <key> <counter>"
     p="$(require_ledger "$1")" || exit 2
     counter="$2"
-    "$0" can "$1" "$counter" >/dev/null 2>&1 || {
+    # bash "$0", not "$0": every file in this repo is committed 100644 and the
+    # tree lives on an SMB share authored from Windows, where the exec bit does
+    # not survive. A bare "$0" self-call fails on Linux with permission denied,
+    # and the failure is swallowed by the || below -- so every bump reported
+    # "budget exhausted" and no counter ever moved. That reads downstream as a
+    # legitimate refusal, which is the INVARIANT 10 failure this repo exists to
+    # prevent. Invoking through bash is mode-independent and cannot regress.
+    bash "$0" can "$1" "$counter" >/dev/null 2>&1 || {
       echo "ledger: refusing to bump $counter — budget exhausted" >&2
       exit 1
     }
@@ -220,7 +227,7 @@ case "$CMD" in
   seen-add)
     [ $# -eq 2 ] || die "usage: seen-add <key> <violation_id>"
     p="$(require_ledger "$1")" || exit 2
-    if "$0" seen-has "$1" "$2" 2>/dev/null; then exit 0; fi
+    if bash "$0" seen-has "$1" "$2" 2>/dev/null; then exit 0; fi  # bash "$0": see bump
     cur=$(sed -n 's/^  "seen_keys": \(.*\),$/\1/p' "$p" | head -1)
     [ -n "$cur" ] || cur="[]"
     if [ "$cur" = "[]" ]; then new="[\"$2\"]"; else new="${cur%]}, \"$2\"]"; fi
